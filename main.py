@@ -9,12 +9,12 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 서버 설정 (환율 + 추가/차감 가감액 + 내 통장 잔액 + 로블록스 프리미엄 여부)
+# 서버 설정 (환율 + 추가/차감 가감액 + 내 통장 잔액 + 출금 10% 공제 토글 여부)
 SERVER_CONFIG = {
-    "rate": 1250,          # 1만 원당 기본 1,250 로벅스
-    "adjustment": 0,       # 추가(+)/차감(-)할 고정 로벅스
-    "my_wallet": 0,        # 내 통장에 쌓인 로벅스 잔액
-    "is_premium": False    # 로블록스 프리미엄(10% 할인) 적용 여부
+    "rate": 1250,            # 1만 원당 기본 1,250 로벅스
+    "adjustment": 0,         # 추가(+)/차감(-)할 고정 로벅스
+    "my_wallet": 0,          # 내 통장에 쌓인 로벅스 잔액
+    "withdraw_fee": False    # 출금 시 10% 공제 토글 여부
 }
 
 # 1. 로블록스 아이디 인증 모달
@@ -103,28 +103,15 @@ class CalcKrwModal(discord.ui.Modal, title="원화 ➔ 로벅스 계산"):
             krw = int(self.krw_input.value.strip().replace(",", ""))
             rate = SERVER_CONFIG["rate"]
             adj = SERVER_CONFIG["adjustment"]
-            is_premium = SERVER_CONFIG["is_premium"]
             
             base_robux = int(krw * (rate / 10000))
-            after_adj = base_robux + adj 
+            final_robux = base_robux + adj 
             
-            # 프리미엄 10% 할인 적용 (구매 시 10% 적게 들거나 혜택 적용)
-            if is_premium:
-                final_robux = int(after_adj * 0.9)  # 10% 할인된 금액
-                discount_amount = after_adj - final_robux
-            else:
-                final_robux = after_adj
-                discount_amount = 0
-
-            msg = (
+            await interaction.response.send_message(
                 f"🧮 **{krw:,}원** ➔ 기본 계산: `{base_robux:,} R$`\n"
                 f"⚖️ 가감액 적용: `{adj:+,} R$`\n"
+                f"✨ **최종 결과: +{final_robux:,} R$** (적용 환율: {rate:,}룹)", ephemeral=True
             )
-            if is_premium:
-                msg += f"✨ **프리미엄 10% 할인 적용됨 (-{discount_amount:,} R$)**\n"
-            msg += f"💎 **최종 결과: +{final_robux:,} R$** (적용 환율: {rate:,}룹)"
-
-            await interaction.response.send_message(msg, ephemeral=True)
         except ValueError:
             await interaction.response.send_message("❌ 올바른 숫자를 입력해주세요!", ephemeral=True)
 
@@ -135,18 +122,8 @@ class CalcRobuxModal(discord.ui.Modal, title="로벅스 ➔ 원화 역계산"):
         try:
             robux = int(self.robux_input.value.strip().replace(",", ""))
             rate = SERVER_CONFIG["rate"]
-            is_premium = SERVER_CONFIG["is_premium"]
-            
-            # 프리미엄 상태면 역산할 때도 10% 할인된 가격 기준으로 계산
-            calc_robux = robux / 0.9 if is_premium else robux
-            krw = int((calc_robux / rate) * 10000)
-            
-            msg = f"💵 **{robux:,} R$** ➔ 필요 금액 약 **~ {krw:,}원**"
-            if is_premium:
-                msg += " (✨ 프리미엄 10% 할인 반영됨)"
-            msg += f" (환율: 1만 원당 {rate:,}룹)"
-
-            await interaction.response.send_message(msg, ephemeral=True)
+            krw = int((robux / rate) * 10000)
+            await interaction.response.send_message(f"💵 **{robux:,} R$** ➔ 필요 금액 약 **~ {krw:,}원** (환율: 1만 원당 {rate:,}룹)", ephemeral=True)
         except ValueError:
             await interaction.response.send_message("❌ 올바른 숫자를 입력해주세요!", ephemeral=True)
 
@@ -224,8 +201,27 @@ class WithdrawModal(discord.ui.Modal, title="내 통장 출금"):
             if val <= 0:
                 await interaction.response.send_message("❌ 0보다 큰 금액을 입력하세요!", ephemeral=True)
                 return
-            SERVER_CONFIG["my_wallet"] -= val
-            await interaction.response.send_message(f"📤 **-{val:,} R$`** 출금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)", ephemeral=True)
+            
+            # 출금 10% 공제 토글이 켜져있다면 입력한 금액의 10%를 깎아서 차감
+            if SERVER_CONFIG["withdraw_fee"]:
+                actual_withdraw = int(val * 0.9)
+                deducted = val - actual_withdraw
+            else:
+                actual_withdraw = val
+                deducted = 0
+
+            if SERVER_CONFIG["my_wallet"] < actual_withdraw:
+                await interaction.response.send_message(f"❌ 잔액이 부족합니다! (현재 잔액: `{SERVER_CONFIG['my_wallet']:,} R$`)", ephemeral=True)
+                return
+
+            SERVER_CONFIG["my_wallet"] -= actual_withdraw
+            
+            msg = f"📤 **-{actual_withdraw:,} R$`** 출금 완료!"
+            if SERVER_CONFIG["withdraw_fee"]:
+                msg += f" (출금 요청: {val:,} R$ | 10% 공제: -{deducted:,} R$)"
+            msg += f" (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)"
+
+            await interaction.response.send_message(msg, ephemeral=True)
         except ValueError:
             await interaction.response.send_message("❌ 숫자로 입력해주세요!", ephemeral=True)
 
@@ -234,9 +230,9 @@ async def update_panel_message(interaction: discord.Interaction):
     current_rate = SERVER_CONFIG["rate"]
     current_adj = SERVER_CONFIG["adjustment"]
     wallet = SERVER_CONFIG["my_wallet"]
-    is_premium = SERVER_CONFIG["is_premium"]
+    w_fee = SERVER_CONFIG["withdraw_fee"]
     
-    prem_status = "🟢 켜짐 (10% 할인 적용 중)" if is_premium else "🔴 꺼짐"
+    fee_status = "🟢 켜짐 (10% 공제 적용)" if w_fee else "🔴 꺼짐"
     
     embed = discord.Embed(
         title="💰 데스볼 로벅스 거래 계산기",
@@ -244,7 +240,7 @@ async def update_panel_message(interaction: discord.Interaction):
                     f"📌 **현재 적용 환율:** 10,000원당 `{current_rate:,} R$`\n"
                     f"➕ **추가/차감 가감액:** `{current_adj:+,} R$`\n"
                     f"🏦 **내 통장 잔액:** `{wallet:,} R$`\n"
-                    f"✨ **로블록스 프리미엄(10%):** {prem_status}",
+                    f"✂️ **출금 시 10% 공제:** {fee_status}",
         color=0xF1C40F
     )
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
@@ -258,7 +254,7 @@ class RobuxCalcView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # 1번 줄: 계산 버튼들
+    # 1번 줄: 계산 버튼들 (환율, 역계산, 수수료)
     @discord.ui.button(label="🧮 원화로 계산", style=discord.ButtonStyle.success, custom_id="calc_krw_btn", row=0)
     async def btn_calc_krw(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CalcKrwModal())
@@ -271,17 +267,17 @@ class RobuxCalcView(discord.ui.View):
     async def btn_calc_fee(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CalcFeeModal())
 
-    # 프리미엄 토글 버튼 (누를 때마다 켜짐/꺼짐 전환)
-    @discord.ui.button(label="✨ 프리미엄(10% 할인) 토글", style=discord.ButtonStyle.blurple, custom_id="toggle_premium_btn", row=0)
-    async def btn_toggle_premium(self, interaction: discord.Interaction, button: discord.ui.Button):
+    # 출금 10% 공제 토글 버튼
+    @discord.ui.button(label="✂️ 출금 10% 공제 토글", style=discord.ButtonStyle.blurple, custom_id="toggle_withdraw_fee_btn", row=0)
+    async def btn_toggle_withdraw_fee(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ 서버 관리자만 변경할 수 있습니다!", ephemeral=True)
             return
         
-        SERVER_CONFIG["is_premium"] = not SERVER_CONFIG["is_premium"]
-        status_text = "켜졌습니다! (10% 할인 적용)" if SERVER_CONFIG["is_premium"] else "꺼졌습니다."
+        SERVER_CONFIG["withdraw_fee"] = not SERVER_CONFIG["withdraw_fee"]
+        status_text = "켜졌습니다! (출금 시 10% 공제 적용)" if SERVER_CONFIG["withdraw_fee"] else "꺼졌습니다."
         
-        await interaction.response.send_message(f"✨ 로블록스 프리미엄 10% 할인이 **{status_text}**", ephemeral=True)
+        await interaction.response.send_message(f"✂️ 출금 10% 공제 기능이 **{status_text}**", ephemeral=True)
         await update_panel_message(interaction)
 
     # 2번 줄: 관리자 전용 제어판 버튼들
@@ -356,9 +352,9 @@ async def robux_panel(ctx):
     current_rate = SERVER_CONFIG["rate"]
     current_adj = SERVER_CONFIG["adjustment"]
     wallet = SERVER_CONFIG["my_wallet"]
-    is_premium = SERVER_CONFIG["is_premium"]
+    w_fee = SERVER_CONFIG["withdraw_fee"]
     
-    prem_status = "🟢 켜짐 (10% 할인 적용 중)" if is_premium else "🔴 꺼짐"
+    fee_status = "🟢 켜짐 (10% 공제 적용)" if w_fee else "🔴 꺼짐"
     
     embed = discord.Embed(
         title="💰 데스볼 로벅스 거래 계산기",
@@ -366,13 +362,13 @@ async def robux_panel(ctx):
                     f"📌 **현재 적용 환율:** 10,000원당 `{current_rate:,} R$`\n"
                     f"➕ **추가/차감 가감액:** `{current_adj:+,} R$`\n"
                     f"🏦 **내 통장 잔액:** `{wallet:,} R$`\n"
-                    f"✨ **로블록스 프리미엄(10%):** {prem_status}",
+                    f"✂️ **출금 시 10% 공제:** {fee_status}",
         color=0xF1C40F
     )
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
     await ctx.send(embed=embed, view=RobuxCalcView())
 
-# 기타 명령어 백업
+# 기존 명령어 백업
 @bot.command(name='환율', aliases=['세팅'])
 @commands.has_permissions(administrator=True)
 async def set_robux_rate(ctx, new_rate: int):
@@ -404,8 +400,13 @@ async def deposit_wallet(ctx, amount: int):
 @bot.command(name='출금')
 @commands.has_permissions(administrator=True)
 async def withdraw_wallet(ctx, amount: int):
-    SERVER_CONFIG["my_wallet"] -= amount
-    await ctx.send(f"📤 **-{amount:,} R$`** 출금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)")
+    if SERVER_CONFIG["withdraw_fee"]:
+        actual_withdraw = int(amount * 0.9)
+    else:
+        actual_withdraw = amount
+        
+    SERVER_CONFIG["my_wallet"] -= actual_withdraw
+    await ctx.send(f"📤 **-{actual_withdraw:,} R$`** 출금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)")
 
 # 공지 명령어
 @bot.command(name='공지', aliases=['notice'])
