@@ -69,8 +69,8 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                 await interaction.user.add_roles(role)
                 await interaction.followup.send(f"🎉 인증 성공!\n로블록스 계정 **{display_name}**(ID: {roblox_id})와 연동되어 **Verified** 역할이 지급되었습니다.", ephemeral=True)
 
-                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송
-                target_channel = discord.utils.get(interaction.guild.text_channels, name="한국인-플레이어")
+                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송 (이모지가 붙어있어도 이름 끝부분이나 포함 관계로 유연하게 찾도록 수정)
+                target_channel = discord.utils.get(interaction.guild.text_channels, lambda c: "한국인-플레이어" in c.name)
                 if target_channel:
                     embed = discord.Embed(
                         title="✨ 새로운 플레이어 인증 완료!",
@@ -106,12 +106,12 @@ async def on_ready():
         bot.add_view(VerifyView())
     await bot.change_presence(activity=discord.Game(name="!인증패널 입력하기"))
 
-# 3. 인증 패널 생성 명령어
+# 3. 인증 패널 생성 명령어 (채널 이름에 이모지가 붙어있어도 '인증' 글자가 포함되면 통과되도록 수정)
 @bot.command(name='인증패널')
 @commands.has_permissions(administrator=True)
 async def verify_panel(ctx):
-    if ctx.channel.name != "인증":
-        await ctx.send("❌ 이 명령어는 **#인증** 채널에서만 사용할 수 있습니다.", delete_after=5)
+    if "인증" not in ctx.channel.name:
+        await ctx.send("❌ 이 명령어는 **인증** 관련 채널에서만 사용할 수 있습니다.", delete_after=5)
         return
 
     embed = discord.Embed(
