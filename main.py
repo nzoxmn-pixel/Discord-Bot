@@ -69,12 +69,12 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                 await interaction.user.add_roles(role)
                 await interaction.followup.send(f"🎉 인증 성공!\n로블록스 계정 **{display_name}**(ID: {roblox_id})와 연동되어 **Verified** 역할이 지급되었습니다.", ephemeral=True)
 
-                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송
+                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송 (유저 이름 깔끔하게 수정)
                 target_channel = discord.utils.get(interaction.guild.text_channels, name="한국인-플레이어")
                 if target_channel:
                     embed = discord.Embed(
                         title="✨ 새로운 플레이어 인증 완료!",
-                        description=f"디스코드 유저 **{interaction.user.mention}** 님의 로블록스 계정 연동 정보입니다.",
+                        description=f"디스코드 유저 **{interaction.user.name}** 님의 로블록스 계정 연동 정보입니다.",
                         color=0x00ff00
                     )
                     embed.add_field(name="닉네임 (Username)", value=f"`{name}`", inline=True)
