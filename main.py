@@ -91,7 +91,7 @@ class VerifyView(discord.ui.View):
     async def verify_button_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RobloxVerifyModal())
 
-# 2. 로벅스 계산기 팝업 입력 모달들
+# 2. 로벅스 계산기 및 환율 설정 모달들
 class CalcKrwModal(discord.ui.Modal, title="원화 ➔ 로벅스 계산"):
     krw_input = discord.ui.TextInput(label="원화 금액 (원)", placeholder="예: 10000", required=True)
 
@@ -128,7 +128,26 @@ class CalcFeeModal(discord.ui.Modal, title="마켓플레이스 수수료 계산"
         except ValueError:
             await interaction.response.send_message("❌ 올바른 숫자를 입력해주세요!", ephemeral=True)
 
-# 3. 버튼형 UI 뷰 클래스
+class SetRateModal(discord.ui.Modal, title="서버 거래 환율 설정 [관리자 전용]"):
+    rate_input = discord.ui.TextInput(label="1만 원당 로벅스 (R$)", placeholder="예: 1300", required=True)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # 관리자 권한 체크
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ 관리자만 환율을 변경할 수 있습니다!", ephemeral=True)
+            return
+        try:
+            new_rate = int(self.rate_input.value.strip().replace(",", ""))
+            if new_rate <= 0:
+                await interaction.response.send_message("❌ 환율은 0보다 커야 합니다!", ephemeral=True)
+                return
+            
+            SERVER_CONFIG["rate"] = new_rate
+            await interaction.response.send_message(f"⚙️ 환율 변경 완료! 이제 모든 계산에 **10,000원당 `{new_rate:,} R$`** 환율이 적용됩니다.", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("❌ 올바른 숫자를 입력해주세요!", ephemeral=True)
+
+# 3. 버튼형 UI 뷰 클래스 (환율 설정 버튼 추가)
 class RobuxCalcView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -144,6 +163,13 @@ class RobuxCalcView(discord.ui.View):
     @discord.ui.button(label="🏷️ 30% 수수료 계산", style=discord.ButtonStyle.secondary, custom_id="calc_fee_btn")
     async def btn_calc_fee(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CalcFeeModal())
+
+    @discord.ui.button(label="⚙️ 환율 설정", style=discord.ButtonStyle.danger, custom_id="set_rate_btn")
+    async def btn_set_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ 이 버튼은 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
+            return
+        await interaction.response.send_modal(SetRateModal())
 
 @tasks.loop(hours=1)
 async def background_automation_task():
@@ -195,7 +221,7 @@ async def robux_panel(ctx):
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
     await ctx.send(embed=embed, view=RobuxCalcView())
 
-# 관리자 환율 설정 명령어 (!환율 [금액])
+# 관리자 환율 설정 명령어 (!환율 [금액]) - 백업용으로도 유지
 @bot.command(name='환율', aliases=['세팅'])
 @commands.has_permissions(administrator=True)
 async def set_robux_rate(ctx, new_rate: int):
@@ -231,7 +257,7 @@ async def clear_messages(ctx, amount: int = 30):
 @commands.has_permissions(manage_messages=True)
 async def clear_bot_messages(ctx, amount: int = 30):
     await ctx.message.delete()
-    deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author.bot)
+    deleted = await ctx.channel.purge(limit=amount, check=lambda m: not m.author.bot)
     await ctx.send(f"🤖 봇 메시지 **{len(deleted)}개** 청소 완료!", delete_after=3)
 
 token = os.getenv("TOKEN")
