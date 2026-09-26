@@ -125,15 +125,16 @@ async def verify_panel(ctx):
 @bot.command(name='공지', aliases=['notice', '공지사항'])
 @commands.has_permissions(administrator=True)
 async def notice_command(ctx, *, text: str):
-    # 관리자가 입력한 명령어 메시지는 깔끔하게 삭제
     await ctx.message.delete()
     
     embed = discord.Embed(
         title="📢 서버 공지사항",
         description=text,
-        color=0x5865F2 # 디스코드 블러플 색상
+        color=0x5865F2
     )
-    embed.set_footer(text=f"작성자: {ctx.author.display_name}", icon_url=ctx.author.display.avatar.url if ctx.author.avatar else None)
+    
+    icon_url = ctx.author.avatar.url if ctx.author.avatar else ctx.author.default_avatar.url
+    embed.set_footer(text=f"작성자: {ctx.author.display_name}", icon_url=icon_url)
     
     await ctx.send(embed=embed)
 
