@@ -9,9 +9,11 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 기본 환율 설정
+# 서버 설정 (환율 + 추가/차감 가감액 + 내 통장 잔액 관리)
 SERVER_CONFIG = {
-    "rate": 1250  # 1만 원당 기본 1,250 로벅스
+    "rate": 1250,        # 1만 원당 기본 1,250 로벅스
+    "adjustment": 0,     # 추가(+)/차감(-)할 고정 로벅스 (예: 수고비나 추가 수수료)
+    "my_wallet": 0       # 내 통장(봇 관리자/서버)에 쌓인 로벅스 잔액
 }
 
 # 1. 로블록스 아이디 인증 모달
@@ -91,16 +93,25 @@ class VerifyView(discord.ui.View):
     async def verify_button_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RobloxVerifyModal())
 
-# 2. 로벅스 계산기 및 환율 설정 모달들
-class CalcKrwModal(discord.ui.Modal, title="원화 ➔ 로벅스 계산"):
+# 2. 계산기 및 설정 모달들
+class CalcKrwModal(discord.ui.Modal, title="원화 ➔ 로벅스 계산 (가감액 적용)"):
     krw_input = discord.ui.TextInput(label="원화 금액 (원)", placeholder="예: 10000", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
             krw = int(self.krw_input.value.strip().replace(",", ""))
             rate = SERVER_CONFIG["rate"]
-            robux = int(krw * (rate / 10000))
-            await interaction.response.send_message(f"🧮 **{krw:,}원** ➔ 약 **+{robux:,} R$** (적용 환율: 1만 원당 {rate:,}룹)", ephemeral=True)
+            adj = SERVER_CONFIG["adjustment"]
+            
+            base_robux = int(krw * (rate / 10000))
+            final_robux = base_robux + adj # 가감액(+ 또는 -) 반영
+            
+            await interaction.response.send_message(
+                f"🧮 **{krw:,}원** ➔ 기본 계산: `{base_robux:,} R$`\n"
+                f"⚖️ 가감액 적용: `{adj:+,} R$`\n"
+                f"✨ **최종 결과: +{final_robux:,} R$**\n"
+                f"(적용 환율: 1만 원당 {rate:,}룹)", ephemeral=True
+            )
         except ValueError:
             await interaction.response.send_message("❌ 올바른 숫자를 입력해주세요!", ephemeral=True)
 
@@ -132,7 +143,6 @@ class SetRateModal(discord.ui.Modal, title="서버 거래 환율 설정 [관리�
     rate_input = discord.ui.TextInput(label="1만 원당 로벅스 (R$)", placeholder="예: 1300", required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # 관리자 권한 체크
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ 관리자만 환율을 변경할 수 있습니다!", ephemeral=True)
             return
@@ -147,7 +157,7 @@ class SetRateModal(discord.ui.Modal, title="서버 거래 환율 설정 [관리�
         except ValueError:
             await interaction.response.send_message("❌ 올바른 숫자를 입력해주세요!", ephemeral=True)
 
-# 3. 버튼형 UI 뷰 클래스 (환율 설정 버튼 추가)
+# 3. 버튼형 UI 뷰 클래스
 class RobuxCalcView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -195,7 +205,7 @@ async def on_ready():
     if not background_automation_task.is_running():
         background_automation_task.start()
 
-# 인증 패널 생성 명령어
+# 인증 패널 생성
 @bot.command(name='인증패널')
 @commands.has_permissions(administrator=True)
 async def verify_panel(ctx):
@@ -206,38 +216,69 @@ async def verify_panel(ctx):
     )
     await ctx.send(embed=embed, view=VerifyView())
 
-# 로벅스 계산기 UI 패널 생성 명령어 (!계산패널)
+# 계산 패널 생성
 @bot.command(name='계산패널', aliases=['로벅스패널'])
 @commands.has_permissions(administrator=True)
 async def robux_panel(ctx):
     await ctx.message.delete()
     current_rate = SERVER_CONFIG["rate"]
+    current_adj = SERVER_CONFIG["adjustment"]
+    wallet = SERVER_CONFIG["my_wallet"]
     
     embed = discord.Embed(
         title="💰 데스볼 로벅스 거래 계산기",
-        description=f"버튼을 클릭하여 원하는 계산을 편리하게 진행하세요!\n\n📌 **현재 적용 환율:** 10,000원당 **`{current_rate:,} R$`**",
+        description=f"버튼을 클릭하여 원하는 계산을 편리하게 진행하세요!\n\n"
+                    f"📌 **현재 적용 환율:** 10,000원당 `{current_rate:,} R$`\n"
+                    f"➕ **추가/차감 가감액:** `{current_adj:+,} R$`\n"
+                    f"🏦 **내 통장 잔액:** `{wallet:,} R$`",
         color=0xF1C40F
     )
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
     await ctx.send(embed=embed, view=RobuxCalcView())
 
-# 관리자 환율 설정 명령어 (!환율 [금액]) - 백업용으로도 유지
+# 1. 환율 설정 명령어 (!환율 1300)
 @bot.command(name='환율', aliases=['세팅'])
 @commands.has_permissions(administrator=True)
 async def set_robux_rate(ctx, new_rate: int):
     if new_rate <= 0:
         await ctx.send("❌ 환율은 0보다 커야 합니다!", delete_after=5)
         return
-    
     SERVER_CONFIG["rate"] = new_rate
-    embed = discord.Embed(
-        title="⚙️ 거래 환율 변경 완료",
-        description=f"이제부터 모든 계산에 **10,000원당 `{new_rate:,} R$`** 환율이 적용됩니다!",
-        color=0xE67E22
-    )
-    await ctx.send(embed=embed)
+    await ctx.send(f"⚙️ 환율 변경 완료: 10,000원당 **`{new_rate:,} R$`**")
 
-# 관리자용 공지 명령어
+# 2. 추가/차감 가감액 설정 명령어 (!가감 50 또는 !가감 -20)
+@bot.command(name='가감', aliases=['추가', '차감'])
+@commands.has_permissions(administrator=True)
+async def set_adjustment(ctx, amount: int):
+    SERVER_CONFIG["adjustment"] = amount
+    sign = "+" if amount >  0 else ""
+    await ctx.send(f"➕/➖ 계산 시 적용될 가감액이 **`{sign}{amount:,} R$`**로 설정되었습니다!")
+
+# 3. 내 통장 잔액 직접 설정/확인 명령어 (!통장 또는 !통장 5000)
+@bot.command(name='통장', aliases=['잔액', '지갑'])
+@commands.has_permissions(administrator=True)
+async def manage_wallet(ctx, amount: int = None):
+    if amount is not None:
+        SERVER_CONFIG["my_wallet"] = amount
+        await ctx.send(f"🏦 내 통장 잔액이 **`{amount:,} R$`**로 설정(수정)되었습니다!")
+    else:
+        wallet = SERVER_CONFIG["my_wallet"]
+        await ctx.send(f"🏦 현재 내 통장 잔액: **`{wallet:,} R$`**입니다.")
+
+# 4. 통장에 로벅스 입금/출금 명령어 (!입금 1000 또는 !출금 500)
+@bot.command(name='입금')
+@commands.has_permissions(administrator=True)
+async def deposit_wallet(ctx, amount: int):
+    SERVER_CONFIG["my_wallet"] += amount
+    await ctx.send(f"📥 **+{amount:,} R$`** 입금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)")
+
+@bot.command(name='출금')
+@commands.has_permissions(administrator=True)
+async def withdraw_wallet(ctx, amount: int):
+    SERVER_CONFIG["my_wallet"] -= amount
+    await ctx.send(f"📤 **-{amount:,} R$`** 출금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)")
+
+# 공지 명령어
 @bot.command(name='공지', aliases=['notice'])
 @commands.has_permissions(administrator=True)
 async def notice_command(ctx, *, text: str):
