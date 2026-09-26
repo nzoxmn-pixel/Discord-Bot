@@ -121,29 +121,37 @@ async def verify_panel(ctx):
     )
     await ctx.send(embed=embed, view=VerifyView())
 
-# 4. 일반 유저 채팅만 골라서 지우는 명령어 (!청소 [개수])
+# 4. 관리자용 공지 임베드 전송 명령어 (!공지 [내용])
+@bot.command(name='공지', aliases=['notice', '공지사항'])
+@commands.has_permissions(administrator=True)
+async def notice_command(ctx, *, text: str):
+    # 관리자가 입력한 명령어 메시지는 깔끔하게 삭제
+    await ctx.message.delete()
+    
+    embed = discord.Embed(
+        title="📢 서버 공지사항",
+        description=text,
+        color=0x5865F2 # 디스코드 블러플 색상
+    )
+    embed.set_footer(text=f"작성자: {ctx.author.display_name}", icon_url=ctx.author.display.avatar.url if ctx.author.avatar else None)
+    
+    await ctx.send(embed=embed)
+
+# 5. 일반 유저 채팅만 골라서 지우는 명령어 (!청소 [개수])
 @bot.command(name='청소', aliases=['clear', '삭제'])
 @commands.has_permissions(manage_messages=True)
 async def clear_messages(ctx, amount: int = 30):
-    # 명령어 입력한 본인의 메시지 먼저 삭제
     await ctx.message.delete()
-    
-    # 봇이 아닌 일반 유저들의 메시지만 필터링해서 삭제
     deleted = await ctx.channel.purge(limit=amount, check=lambda m: not m.author.bot)
-    
-    msg = await ctx.send(f"🧹 일반 유저의 메시지 총 **{len(deleted)}개**를 청소했습니다!", delete_after=3)
+    await ctx.send(f"🧹 일반 유저의 메시지 총 **{len(deleted)}개**를 청소했습니다!", delete_after=3)
 
-# 5. 봇이 보낸 메시지만 골라서 지우는 명령어 (!봇청소 [개수])
+# 6. 봇이 보낸 메시지만 골라서 지우는 명령어 (!봇청소 [개수])
 @bot.command(name='봇청소', aliases=['botclear'])
 @commands.has_permissions(manage_messages=True)
 async def clear_bot_messages(ctx, amount: int = 30):
-    # 명령어 입력한 본인의 메시지 먼저 삭제
     await ctx.message.delete()
-    
-    # 봇이 보낸 메시지만 필터링해서 삭제
     deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author.bot)
-    
-    msg = await ctx.send(f"🤖 봇이 보낸 메시지 총 **{len(deleted)}개**를 청소했습니다!", delete_after=3)
+    await ctx.send(f"🤖 봇이 보낸 메시지 총 **{len(deleted)}개**를 청소했습니다!", delete_after=3)
 
 token = os.getenv("TOKEN")
 if token is None:
