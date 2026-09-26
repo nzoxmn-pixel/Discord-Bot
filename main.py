@@ -69,8 +69,8 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                 await interaction.user.add_roles(role)
                 await interaction.followup.send(f"🎉 인증 성공!\n로블록스 계정 **{display_name}**(ID: {roblox_id})와 연동되어 **Verified** 역할이 지급되었습니다.", ephemeral=True)
 
-                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송
-                target_channel = discord.utils.get(interaction.guild.text_channels, lambda c: "한국인-플레이어" in c.name)
+                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송 (find로 수정)
+                target_channel = discord.utils.find(lambda c: "한국인-플레이어" in c.name, interaction.guild.text_channels)
                 if target_channel:
                     embed = discord.Embed(
                         title="✨ 새로운 플레이어 인증 완료!",
@@ -99,12 +99,11 @@ class VerifyView(discord.ui.View):
     async def verify_button_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RobloxVerifyModal())
 
-# 파이썬 백그라운드 자동화 루프 (예: 매 시간마다 자동으로 실행되는 작업)
+# 파이썬 백그라운드 자동화 루프 (find를 사용하도록 수정)
 @tasks.loop(hours=1)
 async def background_automation_task():
     for guild in bot.guilds:
-        # '공지'가 포함된 채널을 자동으로 찾아 정기 메시지나 상태 체크 전송
-        target_channel = discord.utils.get(guild.text_channels, lambda c: "공지" in c.name)
+        target_channel = discord.utils.find(lambda c: "공지" in c.name, guild.text_channels)
         if target_channel:
             # 여기에 원하는 파이썬 자동화 로직이나 알림을 넣을 수 있습니다.
             pass
@@ -120,7 +119,6 @@ async def on_ready():
         bot.add_view(VerifyView())
     await bot.change_presence(activity=discord.Game(name="!인증패널 입력하기"))
     
-    # 백그라운드 태스크 시작
     if not background_automation_task.is_running():
         background_automation_task.start()
 
