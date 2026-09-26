@@ -69,7 +69,7 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                 await interaction.user.add_roles(role)
                 await interaction.followup.send(f"🎉 인증 성공!\n로블록스 계정 **{display_name}**(ID: {roblox_id})와 연동되어 **Verified** 역할이 지급되었습니다.", ephemeral=True)
 
-                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송 (클릭 가능한 디스코드 멘션 적용)
+                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송
                 target_channel = discord.utils.get(interaction.guild.text_channels, name="한국인-플레이어")
                 if target_channel:
                     embed = discord.Embed(
@@ -121,12 +121,29 @@ async def verify_panel(ctx):
     )
     await ctx.send(embed=embed, view=VerifyView())
 
-# 4. 메시지 청소 명령어 (!청소 [개수])
+# 4. 일반 유저 채팅만 골라서 지우는 명령어 (!청소 [개수])
 @bot.command(name='청소', aliases=['clear', '삭제'])
 @commands.has_permissions(manage_messages=True)
-async def clear_messages(ctx, amount: int = 10):
-    deleted = await ctx.channel.purge(limit=amount + 1)
-    await ctx.send(f"🧹 총 **{len(deleted) - 1}개**의 메시지를 깔끔하게 청소했습니다!", delete_after=3)
+async def clear_messages(ctx, amount: int = 30):
+    # 명령어 입력한 본인의 메시지 먼저 삭제
+    await ctx.message.delete()
+    
+    # 봇이 아닌 일반 유저들의 메시지만 필터링해서 삭제
+    deleted = await ctx.channel.purge(limit=amount, check=lambda m: not m.author.bot)
+    
+    msg = await ctx.send(f"🧹 일반 유저의 메시지 총 **{len(deleted)}개**를 청소했습니다!", delete_after=3)
+
+# 5. 봇이 보낸 메시지만 골라서 지우는 명령어 (!봇청소 [개수])
+@bot.command(name='봇청소', aliases=['botclear'])
+@commands.has_permissions(manage_messages=True)
+async def clear_bot_messages(ctx, amount: int = 30):
+    # 명령어 입력한 본인의 메시지 먼저 삭제
+    await ctx.message.delete()
+    
+    # 봇이 보낸 메시지만 필터링해서 삭제
+    deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author.bot)
+    
+    msg = await ctx.send(f"🤖 봇이 보낸 메시지 총 **{len(deleted)}개**를 청소했습니다!", delete_after=3)
 
 token = os.getenv("TOKEN")
 if token is None:
