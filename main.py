@@ -12,8 +12,8 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # 1. 로블록스 아이디를 입력받는 모달(팝업 창)
 class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
     roblox_username = discord.ui.TextInput(
-        label="로블록스 닉네임",
-        placeholder="사용 중인 로블록스 정확한 닉네임을 입력하세요",
+        label="로블록스 아이디",
+        placeholder="사용 중인 로블록스 아이디를 입력하세요",
         required=True,
         max_length=50
     )
@@ -38,7 +38,7 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                     data = await resp.json()
                     
                     if not data.get("data") or len(data["data"]) == 0:
-                        await interaction.followup.send(f"❌ **{username}**은(는) 존재하지 않는 로블록스 계정입니다. 닉네임을 다시 확인해 주세요.", ephemeral=True)
+                        await interaction.followup.send(f"❌ **{username}**은(는) 존재하지 않는 로블록스 계정입니다. 아이디를 다시 확인해 주세요.", ephemeral=True)
                         return
 
                     user_info = data["data"][0]
@@ -69,7 +69,7 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                 await interaction.user.add_roles(role)
                 await interaction.followup.send(f"🎉 인증 성공!\n로블록스 계정 **{display_name}**(ID: {roblox_id})와 연동되어 **Verified** 역할이 지급되었습니다.", ephemeral=True)
 
-                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송 (이모지가 붙어있어도 이름 끝부분이나 포함 관계로 유연하게 찾도록 수정)
+                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송
                 target_channel = discord.utils.get(interaction.guild.text_channels, lambda c: "한국인-플레이어" in c.name)
                 if target_channel:
                     embed = discord.Embed(
@@ -77,7 +77,7 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                         description=f"디스코드 유저 {interaction.user.mention} 님의 로블록스 계정 연동 정보입니다.",
                         color=0x00ff00
                     )
-                    embed.add_field(name="닉네임 (Username)", value=f"`{name}`", inline=True)
+                    embed.add_field(name="아이디 (Username)", value=f"`{name}`", inline=True)
                     embed.add_field(name="표시 이름 (Display Name)", value=f"`{display_name}`", inline=True)
                     embed.add_field(name="로블록스 ID", value=f"`{roblox_id}`", inline=False)
                     
@@ -106,7 +106,7 @@ async def on_ready():
         bot.add_view(VerifyView())
     await bot.change_presence(activity=discord.Game(name="!인증패널 입력하기"))
 
-# 3. 인증 패널 생성 명령어 (채널 이름에 이모지가 붙어있어도 '인증' 글자가 포함되면 통과되도록 수정)
+# 3. 인증 패널 생성 명령어
 @bot.command(name='인증패널')
 @commands.has_permissions(administrator=True)
 async def verify_panel(ctx):
@@ -116,7 +116,7 @@ async def verify_panel(ctx):
 
     embed = discord.Embed(
         title="🛡️ 로블록스 디스코드 연동 인증",
-        description="서버를 이용하려면 아래의 **[로블록스 인증하기]** 버튼을 누르고 본인의 로블록스 닉네임을 입력해 주세요!",
+        description="서버를 이용하려면 아래의 **[로블록스 인증하기]** 버튼을 누르고 본인의 로블록스 **아이디**를 입력해 주세요!",
         color=0x00ff00
     )
     await ctx.send(embed=embed, view=VerifyView())
