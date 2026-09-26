@@ -29,6 +29,7 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
 
         try:
             async with aiohttp.ClientSession() as session:
+                # 1단계: 사용자 ID 및 디스플레이 이름 조회
                 async with session.post(url, json=payload) as resp:
                     if resp.status != 200:
                         await interaction.followup.send("❌ 로블록스 API 서버와 통신 중 오류가 발생했습니다.", ephemeral=True)
@@ -40,20 +41,51 @@ class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
                         await interaction.followup.send(f"❌ **{username}**은(는) 존재하지 않는 로블록스 계정입니다. 닉네임을 다시 확인해 주세요.", ephemeral=True)
                         return
 
-                    roblox_id = data["data"][0]["id"]
-                    display_name = data["data"][0]["displayName"]
+                    user_info = data["data"][0]
+                    roblox_id = user_info["id"]
+                    display_name = user_info["displayName"]
+                    name = user_info["name"]
+
+                # 2단계: 아바타 썸네일 이미지 가져오기
+                avatar_url = "https://thumbnails.roblox.com/v1/users/avatar-headshot"
+                params = {"userIds": roblox_id, "size": "150x150", "format": "Png", "isCircular": "false"}
+                
+                async with session.get(avatar_url, params=params) as avatar_resp:
+                    avatar_data = await avatar_resp.json()
+                    headshot_url = ""
+                    if avatar_data.get("data") and len(avatar_data["data"]) > 0:
+                        headshot_url = avatar_data["data"][0]["imageUrl"]
+
+                # 3단계: Verified 역할 부여
+                role = discord.utils.get(interaction.guild.roles, name="Verified")
+                if not role:
+                    await interaction.followup.send("❌ 서버에 'Verified' 역할이 설정되어 있지 않습니다. 관리자에게 문의하세요.", ephemeral=True)
+                    return
+
+                if role in interaction.user.roles:
+                    await interaction.followup.send(f"✅ 이미 인증이 완료된 계정입니다! (연동된 계정: **{display_name}**)", ephemeral=True)
+                    return
+
+                await interaction.user.add_roles(role)
+                await interaction.followup.send(f"🎉 인증 성공!\n로블록스 계정 **{display_name}**(ID: {roblox_id})와 연동되어 **Verified** 역할이 지급되었습니다.", ephemeral=True)
+
+                # 4단계: #한국인-플레이어 채널에 프로필 임베드 전송
+                target_channel = discord.utils.get(interaction.guild.text_channels, name="한국인-플레이어")
+                if target_channel:
+                    embed = discord.Embed(
+                        title="✨ 새로운 플레이어 인증 완료!",
+                        description=f"디스코드 유저 **{interaction.user.mention}** 님의 로블록스 계정 연동 정보입니다.",
+                        color=0x00ff00
+                    )
+                    embed.add_field(name="닉네임 (Username)", value=f"`{name}`", inline=True)
+                    embed.add_field(name="표시 이름 (Display Name)", value=f"`{display_name}`", inline=True)
+                    embed.add_field(name="로블록스 ID", value=f"`{roblox_id}`", inline=False)
                     
-                    role = discord.utils.get(interaction.guild.roles, name="Verified")
-                    if not role:
-                        await interaction.followup.send("❌ 서버에 'Verified' 역할이 설정되어 있지 않습니다. 관리자에게 문의하세요.", ephemeral=True)
-                        return
-
-                    if role in interaction.user.roles:
-                        await interaction.followup.send(f"✅ 이미 인증이 완료된 계정입니다! (연동된 계정: **{display_name}**)", ephemeral=True)
-                        return
-
-                    await interaction.user.add_roles(role)
-                    await interaction.followup.send(f"🎉 인증 성공!\n로블록스 계정 **{display_name}**(ID: {roblox_id})와 연동되어 **Verified** 역할이 지급되었습니다.", ephemeral=True)
+                    if headshot_url:
+                        embed.set_thumbnail(url=headshot_url)
+                    
+                    embed.set_footer(text=f"디스코드 ID: {interaction.user.id}")
+                    await target_channel.send(embed=embed)
 
         except Exception as e:
             await interaction.followup.send(f"❌ 처리 중 오류가 발생했습니다: {e}", ephemeral=True)
@@ -93,11 +125,8 @@ async def verify_panel(ctx):
 @bot.command(name='청소', aliases=['clear', '삭제'])
 @commands.has_permissions(manage_messages=True)
 async def clear_messages(ctx, amount: int = 10):
-    # 명령어 자체 메시지 포함해서 지정한 개수만큼 삭제 (+1은 명령어 메시지)
     deleted = await ctx.channel.purge(limit=amount + 1)
-    
-    # 안내 메시지를 잠깐 띄웠다가 3초 뒤에 삭제
-    msg = await ctx.send(f"🧹 총 **{len(deleted) - 1}개**의 메시지를 깔끔하게 청소했습니다!", delete_after=3)
+    await ctx.send(f"🧹 총 **{len(deleted) - 1}개**의 메시지를 깔끔하게 청소했습니다!", delete_after=3)
 
 token = os.getenv("TOKEN")
 if token is None:
