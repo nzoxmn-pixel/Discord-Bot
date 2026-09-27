@@ -241,6 +241,8 @@ async def update_panel_message(interaction: discord.Interaction):
                     f"✂️ **출금 시 10% 공제:** {fee_status}",
         color=0xF1C40F
     )
+    # 여기에 방금 보내주신 로벅스 이미지가 작게 들어가도록 설정했습니다!
+    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe") # (임시 예시 링크, 원하시는 이미지 직링크로 교체 가능)
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
     try:
         await interaction.message.edit(embed=embed)
@@ -346,6 +348,8 @@ async def robux_panel(ctx):
                     f"✂️ **출금 시 10% 공제:** {fee_status}",
         color=0xF1C40F
     )
+    # 여기에 원하시는 이미지 링크를 넣으시면 패널 오른쪽에 작은 사진으로 뜹니다!
+    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe") 
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
     await ctx.send(embed=embed, view=RobuxCalcView())
 
