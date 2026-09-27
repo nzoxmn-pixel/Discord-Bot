@@ -182,7 +182,7 @@ class DepositModal(discord.ui.Modal, title="내 통장 입금"):
         try:
             val = int(self.dep_input.value.strip().replace(",", ""))
             if val <= 0:
-                await interaction.response.send_message("❌ 0보다 큰 금액을 입력하세요!", ephemeral=True)
+                await interaction.response.send_message("❌ 0보다 큰 금액을 입금하세요!", ephemeral=True)
                 return
             SERVER_CONFIG["my_wallet"] += val
             await interaction.response.send_message(f"📥 **+{val:,} R$`** 입금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)", ephemeral=True)
@@ -199,10 +199,9 @@ class WithdrawModal(discord.ui.Modal, title="내 통장 출금"):
         try:
             val = int(self.wit_input.value.strip().replace(",", ""))
             if val <= 0:
-                await interaction.response.send_message("❌ 0보다 큰 금액을 입력하세요!", ephemeral=True)
+                await interaction.response.send_message("❌ 0보다 큰 금액을 출금하세요!", ephemeral=True)
                 return
             
-            # 출금 10% 공제 토글이 켜져있다면 입력한 금액의 10%를 깎아서 차감
             if SERVER_CONFIG["withdraw_fee"]:
                 actual_withdraw = int(val * 0.9)
                 deducted = val - actual_withdraw
@@ -254,7 +253,6 @@ class RobuxCalcView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # 1번 줄: 계산 버튼들 (환율, 역계산, 수수료)
     @discord.ui.button(label="🧮 원화로 계산", style=discord.ButtonStyle.success, custom_id="calc_krw_btn", row=0)
     async def btn_calc_krw(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CalcKrwModal())
@@ -267,7 +265,6 @@ class RobuxCalcView(discord.ui.View):
     async def btn_calc_fee(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(CalcFeeModal())
 
-    # 출금 10% 공제 토글 버튼
     @discord.ui.button(label="✂️ 출금 10% 공제 토글", style=discord.ButtonStyle.blurple, custom_id="toggle_withdraw_fee_btn", row=0)
     async def btn_toggle_withdraw_fee(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
@@ -280,7 +277,6 @@ class RobuxCalcView(discord.ui.View):
         await interaction.response.send_message(f"✂️ 출금 10% 공제 기능이 **{status_text}**", ephemeral=True)
         await update_panel_message(interaction)
 
-    # 2번 줄: 관리자 전용 제어판 버튼들
     @discord.ui.button(label="⚙️ 환율 설정", style=discord.ButtonStyle.danger, custom_id="set_rate_btn", row=1)
     async def btn_set_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
@@ -333,6 +329,39 @@ async def on_ready():
     if not background_automation_task.is_running():
         background_automation_task.start()
 
+# 메시지 이벤트 (대용량 동영상 자동 변환)
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if message.attachments:
+        for file in message.attachments:
+            if file.filename.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv')) and file.size > 20 * 1024 * 1024:
+                processing_msg = await message.channel.send(f"⏳ **{message.author.mention}**님이 올리신 동영상의 용량이 커서({file.size / (1024*1024):.1f}MB) 외부 링크로 변환 중입니다...")
+                
+                try:
+                    file_bytes = await file.read()
+                    async with aiohttp.ClientSession() as session:
+                        form = aiohttp.FormData()
+                        form.add_field('file', file_bytes, filename=file.filename)
+                        
+                        async with session.post('https://0x0.st', data=form) as resp:
+                            if resp.status == 200:
+                                download_url = (await resp.text()).strip()
+                                await processing_msg.edit(content=f"🎬 **대용량 동영상 변환 완료!**\n👤 업로더: {message.author.mention}\n🔗 다운로드/시청 링크: {download_url}")
+                                try:
+                                    await message.delete()
+                                except:
+                                    pass
+                                return
+                            else:
+                                await processing_msg.edit(content="❌ 동영상 업로드 서버 통신 중 오류가 발생했습니다.")
+                except Exception as e:
+                    await processing_msg.edit(content=f"❌ 변환 중 오류가 발생했습니다: {e}")
+
+    await bot.process_commands(message)
+
 # 인증 패널 생성
 @bot.command(name='인증패널')
 @commands.has_permissions(administrator=True)
@@ -368,7 +397,6 @@ async def robux_panel(ctx):
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
     await ctx.send(embed=embed, view=RobuxCalcView())
 
-# 기존 명령어 백업
 @bot.command(name='환율', aliases=['세팅'])
 @commands.has_permissions(administrator=True)
 async def set_robux_rate(ctx, new_rate: int):
@@ -408,7 +436,6 @@ async def withdraw_wallet(ctx, amount: int):
     SERVER_CONFIG["my_wallet"] -= actual_withdraw
     await ctx.send(f"📤 **-{actual_withdraw:,} R$`** 출금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)")
 
-# 공지 명령어
 @bot.command(name='공지', aliases=['notice'])
 @commands.has_permissions(administrator=True)
 async def notice_command(ctx, *, text: str):
@@ -416,7 +443,6 @@ async def notice_command(ctx, *, text: str):
     embed = discord.Embed(title="📢 서버 공지사항", description=text, color=0x5865F2)
     await ctx.send(embed=embed)
 
-# 청소 명령어
 @bot.command(name='청소', aliases=['clear'])
 @commands.has_permissions(manage_messages=True)
 async def clear_messages(ctx, amount: int = 30):
