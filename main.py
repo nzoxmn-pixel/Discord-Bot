@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
 import aiohttp
 
@@ -139,7 +139,6 @@ class CalcFeeModal(discord.ui.Modal, title="마켓플레이스 수수료 계산"
         except ValueError:
             await interaction.response.send_message("❌ 올바른 숫자를 입력해주세요!", ephemeral=True)
 
-# 관리자 설정 모달들
 class SetRateModal(discord.ui.Modal, title="서버 거래 환율 설정"):
     rate_input = discord.ui.TextInput(label="1만 원당 로벅스 (R$)", placeholder="예: 1250", required=True)
 
@@ -305,17 +304,6 @@ class RobuxCalcView(discord.ui.View):
             return
         await interaction.response.send_modal(WithdrawModal())
 
-@tasks.loop(hours=1)
-async def background_automation_task():
-    for guild in bot.guilds:
-        target_channel = discord.utils.find(lambda c: "공지" in c.name, guild.text_channels)
-        if target_channel:
-            pass
-
-@background_automation_task.before_loop
-async def before_background_automation_task():
-    await bot.wait_until_ready()
-
 @bot.event
 async def on_ready():
     print(f'로그인 완료: {bot.user} (ID: {bot.user.id})')
@@ -325,42 +313,6 @@ async def on_ready():
         bot.add_view(RobuxCalcView())
     
     await bot.change_presence(activity=discord.Game(name="!계산패널 입력하기"))
-    
-    if not background_automation_task.is_running():
-        background_automation_task.start()
-
-# 메시지 이벤트 (대용량 동영상 자동 변환)
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    if message.attachments:
-        for file in message.attachments:
-            if file.filename.lower().endswith(('.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv')) and file.size > 20 * 1024 * 1024:
-                processing_msg = await message.channel.send(f"⏳ **{message.author.mention}**님이 올리신 동영상의 용량이 커서({file.size / (1024*1024):.1f}MB) 외부 링크로 변환 중입니다...")
-                
-                try:
-                    file_bytes = await file.read()
-                    async with aiohttp.ClientSession() as session:
-                        form = aiohttp.FormData()
-                        form.add_field('file', file_bytes, filename=file.filename)
-                        
-                        async with session.post('https://0x0.st', data=form) as resp:
-                            if resp.status == 200:
-                                download_url = (await resp.text()).strip()
-                                await processing_msg.edit(content=f"🎬 **대용량 동영상 변환 완료!**\n👤 업로더: {message.author.mention}\n🔗 다운로드/시청 링크: {download_url}")
-                                try:
-                                    await message.delete()
-                                except:
-                                    pass
-                                return
-                            else:
-                                await processing_msg.edit(content="❌ 동영상 업로드 서버 통신 중 오류가 발생했습니다.")
-                except Exception as e:
-                    await processing_msg.edit(content=f"❌ 변환 중 오류가 발생했습니다: {e}")
-
-    await bot.process_commands(message)
 
 # 인증 패널 생성
 @bot.command(name='인증패널')
@@ -396,45 +348,6 @@ async def robux_panel(ctx):
     )
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
     await ctx.send(embed=embed, view=RobuxCalcView())
-
-@bot.command(name='환율', aliases=['세팅'])
-@commands.has_permissions(administrator=True)
-async def set_robux_rate(ctx, new_rate: int):
-    SERVER_CONFIG["rate"] = new_rate
-    await ctx.send(f"⚙️ 환율 변경 완료: 10,000원당 **`{new_rate:,} R$`**")
-
-@bot.command(name='가감', aliases=['추가', '차감'])
-@commands.has_permissions(administrator=True)
-async def set_adjustment(ctx, amount: int):
-    SERVER_CONFIG["adjustment"] = amount
-    sign = "+" if amount > 0 else ""
-    await ctx.send(f"➕/➖ 가감액 설정 완료: **`{sign}{amount:,} R$`**")
-
-@bot.command(name='통장', aliases=['잔액', '지갑'])
-@commands.has_permissions(administrator=True)
-async def manage_wallet(ctx, amount: int = None):
-    if amount is not None:
-        SERVER_CONFIG["my_wallet"] = amount
-        await ctx.send(f"🏦 내 통장 잔액이 **`{amount:,} R$`**로 설정되었습니다!")
-    else:
-        await ctx.send(f"🏦 현재 내 통장 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**입니다.")
-
-@bot.command(name='입금')
-@commands.has_permissions(administrator=True)
-async def deposit_wallet(ctx, amount: int):
-    SERVER_CONFIG["my_wallet"] += amount
-    await ctx.send(f"📥 **+{amount:,} R$`** 입금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)")
-
-@bot.command(name='출금')
-@commands.has_permissions(administrator=True)
-async def withdraw_wallet(ctx, amount: int):
-    if SERVER_CONFIG["withdraw_fee"]:
-        actual_withdraw = int(amount * 0.9)
-    else:
-        actual_withdraw = amount
-        
-    SERVER_CONFIG["my_wallet"] -= actual_withdraw
-    await ctx.send(f"📤 **-{actual_withdraw:,} R$`** 출금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)")
 
 @bot.command(name='공지', aliases=['notice'])
 @commands.has_permissions(administrator=True)
