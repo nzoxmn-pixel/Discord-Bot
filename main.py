@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import os
 import aiohttp
+from bs4 import BeautifulSoup
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -19,6 +20,46 @@ SERVER_CONFIG = {
 
 # 끝말잇기 게임 상태 저장용 (채널ID별 관리)
 WORDCHAIN_SESSIONS = {}
+
+# 네이버 국어사전 기반 진짜 단어 검증 함수
+async def is_valid_korean_word(word: str) -> bool:
+    # 1. 기본 글자 수 및 순수 한글 여부 체크 (2글자 이상)
+    if len(word) < 2:
+        return False
+    for char in word:
+        if not ('가' <= char <= '힣'):
+            return False
+
+    # 2. 장난성 연속 글자 차단 (예: 사사사, 니니니)
+    for i in range(len(word) - 2):
+        if word[i] == word[i+1] == word[i+2]:
+            return False
+
+    # 3. 네이버 국어사전에 실제로 존재하는 단어인지 실시간 검색 확인
+    url = f"https://dict.naver.com/search.dict?query={word}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status != 200:
+                    return False
+                html = await resp.text()
+                
+        soup = BeautifulSoup(html, 'html.parser')
+        results = soup.select('.search_list > li')
+        
+        # 정확히 일치하는 단어가 사전에 등재되어 있는지 확인
+        found = False
+        for item in results:
+            title_tag = item.select_one('.word')
+            if title_tag and word in title_tag.text:
+                found = True
+                break
+                
+        return found
+    except Exception:
+        return False
 
 # 1. 로블록스 아이디 인증 모달
 class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
@@ -245,57 +286,56 @@ class RobuxCalcView(discord.ui.View):
     @discord.ui.button(label="⚙️ 환율 설정", style=discord.ButtonStyle.danger, custom_id="set_rate_btn", row=1)
     async def btn_set_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
+            return await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(SetRateModal())
 
     @discord.ui.button(label="⚖️ 가감액 설정", style=discord.ButtonStyle.danger, custom_id="set_adj_btn", row=1)
     async def btn_set_adj(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
+            return await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(SetAdjustmentModal())
 
     @discord.ui.button(label="📥 통장 입금", style=discord.ButtonStyle.secondary, custom_id="deposit_btn", row=1)
     async def btn_deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
+            return await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(DepositModal())
 
     @discord.ui.button(label="📤 통장 출금", style=discord.ButtonStyle.secondary, custom_id="withdraw_btn", row=1)
     async def btn_withdraw(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
+            return await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(WithdrawModal())
 
 # --- 끝말잇기 & 메시지 관리 로직 ---
 @bot.event
 async def on_message(message):
-    # 1. 봇이 보낸 메시지는 무조건 무시
     if message.author.bot:
         return
 
-    # 2. 끝말잇기 채널 전용 로직 (명령어가 아닌 일반 대화일 때만 발동)
     if "끝말잇기" in message.channel.name and not message.content.startswith(bot.command_prefix):
         channel_id = message.channel.id
         content = message.content.strip()
 
-        # 시작 안 한 상태면 기본값 할당
         if channel_id not in WORDCHAIN_SESSIONS:
-            WORDCHAIN_SESSIONS[channel_id] = {"last_word": "사과", "last_user": None}
+            WORDCHAIN_SESSIONS[channel_id] = {"last_word": "바나나", "last_user": None}
 
         session = WORDCHAIN_SESSIONS[channel_id]
         
-        # 연속 입력 방지
+        # 1. 연속 입력 방지
         if session["last_user"] == message.author.id:
             await message.add_reaction("❌")
             await message.channel.send(f"{message.author.mention} 님, 혼자서 연속으로 이어갈 수 없어요!", delete_after=3)
             return
 
-        # 한 글자 방지
-        if len(content) < 2:
+        # 2. 네이버 국어사전 실제 존재 여부 검증 (없는 단어 원천 차단)
+        valid = await is_valid_korean_word(content)
+        if not valid:
             await message.add_reaction("❌")
+            await message.channel.send(f"{message.author.mention} ❌ 국어사전에 없는 단어이거나 올바르지 않은 입력입니다!", delete_after=3)
             return
 
-        # 두음법칙 처리
+        # 3. 두음법칙 처리
         required_char = session["last_word"][-1]
         duum_map = {
             '녀':['여'],'뇨':['요'],'뉴':['유'],'니':['이'],
@@ -306,19 +346,17 @@ async def on_message(message):
         if required_char in duum_map:
             valid_starts.extend(duum_map[required_char])
 
-        # 판정 처리
         if content[0] not in valid_starts:
             await message.add_reaction("❌")
             await message.channel.send(f"{message.author.mention} ❌ **'{required_char}'**(으)로 시작해야 합니다!", delete_after=3)
             return
 
-        # 정답일 경우 세션 갱신
+        # 정답 처리
         session["last_word"] = content
         session["last_user"] = message.author.id
         await message.add_reaction("✅")
-        return # 끝말잇기 채널의 일반 채팅은 여기서 검사 끝 (명령어 처리 안함)
+        return
 
-    # 3. 위 조건들에 해당하지 않으면 일반 명령어(!공지 등) 처리
     await bot.process_commands(message)
 
 @bot.command(name='끝말잇기시작', aliases=['시작'])
@@ -327,15 +365,15 @@ async def start_wordchain(ctx, *, start_word: str = "바나나"):
         return await ctx.send("❌ 이 명령어는 **끝말잇기 채널**에서만 사용할 수 있습니다!", delete_after=5)
     
     cleaned_word = start_word.strip()
-    if len(cleaned_word) < 2:
-        return await ctx.send("❌ 제시어는 2글자 이상이어야 합니다!", delete_after=5)
+    if not await is_valid_korean_word(cleaned_word):
+        return await ctx.send("❌ 국어사전에 존재하는 올바른 단어로 시작해주세요!", delete_after=5)
 
     WORDCHAIN_SESSIONS[ctx.channel.id] = {"last_word": cleaned_word, "last_user": None}
 
     embed = discord.Embed(
         title="🎮 끝말잇기 게임 시작!",
         description=f"현재 제시어: **`{cleaned_word}`**\n"
-                    f"마지막 글자 **'{cleaned_word[-1]}'**로 시작하는 단어를 입력하세요!",
+                    f"마지막 글자 **'{cleaned_word[-1]}'**로 시작하는 국어사전 단어를 입력하세요!",
         color=0x3498DB
     )
     await ctx.send(embed=embed)
@@ -382,7 +420,6 @@ async def clear_messages(ctx, amount: int = 30):
 @commands.has_permissions(manage_messages=True)
 async def clear_bot_messages(ctx, amount: int = 30):
     await ctx.message.delete()
-    # [수정됨] 봇 메시지만 정상적으로 지우도록 변경 (m.author.bot)
     deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author.bot)
     await ctx.send(f"🤖 봇 메시지 **{len(deleted)}개** 청소 완료!", delete_after=3)
 
