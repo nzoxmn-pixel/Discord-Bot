@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 import os
 import aiohttp
-from bs4 import BeautifulSoup
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -17,45 +16,6 @@ SERVER_CONFIG = {
     "my_wallet": 0,          
     "withdraw_fee": False    
 }
-
-# 끝말잇기 게임 상태 저장용 (채널ID별 관리)
-WORDCHAIN_SESSIONS = {}
-
-# 네이버 국어사전 기반 진짜 단어 검증 함수
-async def is_valid_korean_word(word: str) -> bool:
-    if len(word) < 2:
-        return False
-    for char in word:
-        if not ('가' <= char <= '힣'):
-            return False
-
-    for i in range(len(word) - 2):
-        if word[i] == word[i+1] == word[i+2]:
-            return False
-
-    url = f"https://dict.naver.com/search.dict?query={word}"
-    headers = {"User-Agent": "Mozilla/5.0"}
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    return False
-                html = await resp.text()
-                
-        soup = BeautifulSoup(html, 'html.parser')
-        results = soup.select('.search_list > li')
-        
-        found = False
-        for item in results:
-            title_tag = item.select_one('.word')
-            if title_tag and word in title_tag.text:
-                found = True
-                break
-                
-        return found
-    except Exception:
-        return False
 
 # 1. 로블록스 아이디 인증 모달
 class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
@@ -302,72 +262,6 @@ class RobuxCalcView(discord.ui.View):
         if not interaction.user.guild_permissions.administrator:
             return await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(WithdrawModal())
-
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-
-    if "끝말잇기" in message.channel.name and not message.content.startswith(bot.command_prefix):
-        channel_id = message.channel.id
-        content = message.content.strip()
-
-        if channel_id not in WORDCHAIN_SESSIONS:
-            WORDCHAIN_SESSIONS[channel_id] = {"last_word": "바나나", "last_user": None}
-
-        session = WORDCHAIN_SESSIONS[channel_id]
-        
-        if session["last_user"] == message.author.id:
-            await message.add_reaction("❌")
-            await message.channel.send(f"{message.author.mention} 님, 혼자서 연속으로 이어갈 수 없어요!", delete_after=3)
-            return
-
-        valid = await is_valid_korean_word(content)
-        if not valid:
-            await message.add_reaction("❌")
-            await message.channel.send(f"{message.author.mention} ❌ 국어사전에 없는 단어이거나 올바르지 않은 입력입니다!", delete_after=3)
-            return
-
-        required_char = session["last_word"][-1]
-        duum_map = {
-            '녀':['여'],'뇨':['요'],'뉴':['유'],'니':['이'],
-            '랴':['야'],'롸':['와'],'래':['내'],'로':['노'],
-            '률':['율'],'렬':['열'],'락':['낙'],'랑':['낭']
-        }
-        valid_starts = [required_char]
-        if required_char in duum_map:
-            valid_starts.extend(duum_map[required_char])
-
-        if content[0] not in valid_starts:
-            await message.add_reaction("❌")
-            await message.channel.send(f"{message.author.mention} ❌ **'{required_char}'**(으)로 시작해야 합니다!", delete_after=3)
-            return
-
-        session["last_word"] = content
-        session["last_user"] = message.author.id
-        await message.add_reaction("✅")
-        return
-
-    await bot.process_commands(message)
-
-@bot.command(name='끝말잇기시작', aliases=['시작'])
-async def start_wordchain(ctx, *, start_word: str = "바나나"):
-    if "끝말잇기" not in ctx.channel.name:
-        return await ctx.send("❌ 이 명령어는 **끝말잇기 채널**에서만 사용할 수 있습니다!", delete_after=5)
-    
-    cleaned_word = start_word.strip()
-    if not await is_valid_korean_word(cleaned_word):
-        return await ctx.send("❌ 국어사전에 존재하는 올바른 단어로 시작해주세요!", delete_after=5)
-
-    WORDCHAIN_SESSIONS[ctx.channel.id] = {"last_word": cleaned_word, "last_user": None}
-
-    embed = discord.Embed(
-        title="🎮 끝말잇기 게임 시작!",
-        description=f"현재 제시어: **`{cleaned_word}`**\n"
-                    f"마지막 글자 **'{cleaned_word[-1]}'**로 시작하는 국어사전 단어를 입력하세요!",
-        color=0x3498DB
-    )
-    await ctx.send(embed=embed)
 
 @bot.command(name='인증패널')
 @commands.has_permissions(administrator=True)
