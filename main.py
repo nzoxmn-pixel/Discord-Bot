@@ -293,7 +293,6 @@ async def robux_panel(ctx):
 @commands.has_permissions(manage_roles=True)
 async def create_role(ctx, *, role_name: str):
     try:
-        # 화려하고 비비드한 계열의 색상 무작위 선택
         vibrant_colors = [
             discord.Color.brand_red(),
             discord.Color.brand_green(),
