@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 import os
 import aiohttp
+import random
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -203,7 +204,7 @@ async def update_panel_message(interaction: discord.Interaction):
     embed = discord.Embed(
         title="💰 데스볼 로벅스 거래 계산기",
         description=f"버튼을 클릭하여 원하는 계산을 편리하게 진행하세요!\n\n"
-                    f"📌 **현재 적용 환율:** 10,000원당 `{SERVER_CONFIG['rate']:,} R$`\n"
+                    f"📌 **현재 적용 환율:** 1만 원당 `{SERVER_CONFIG['rate']:,} R$`\n"
                     f"➕ **추가/차감 가감액:** `{SERVER_CONFIG['adjustment']:+,} R$`\n"
                     f"🏦 **내 통장 잔액:** `{SERVER_CONFIG['my_wallet']:,} R$`\n"
                     f"✂️ **출금 시 10% 공제:** {fee_status}",
@@ -286,6 +287,48 @@ async def robux_panel(ctx):
     )
     embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe")
     await ctx.send(embed=embed, view=RobuxCalcView())
+
+# 🛠️ 역할 생성 명령어 (화려하고 눈에 띄는 랜덤 색상 적용)
+@bot.command(name='역할생성', aliases=['역할추가'])
+@commands.has_permissions(manage_roles=True)
+async def create_role(ctx, *, role_name: str):
+    try:
+        # 화려하고 비비드한 계열의 색상 무작위 선택
+        vibrant_colors = [
+            discord.Color.brand_red(),
+            discord.Color.brand_green(),
+            discord.Color.blue(),
+            discord.Color.gold(),
+            discord.Color.purple(),
+            discord.Color.magenta(),
+            discord.Color.teal(),
+            discord.Color.blurple(),
+            discord.Color.orange()
+        ]
+        random_color = random.choice(vibrant_colors)
+
+        new_role = await ctx.guild.create_role(
+            name=role_name, 
+            color=random_color, 
+            reason=f"{ctx.author}의 요청으로 생성됨"
+        )
+        await ctx.send(f"✅ 화려한 색상으로 **{new_role.name}** 역할이 생성되었습니다! 🎉", delete_after=5)
+    except Exception as e:
+        await ctx.send(f"❌ 역할을 생성하는 중에 오류가 발생했습니다: {e}", delete_after=5)
+
+# 🛠️ 역할 지정 명령어: !역할지정 [@유저] [역할이름]
+@bot.command(name='역할지정', aliases=['역할부여', '지급'])
+@commands.has_permissions(manage_roles=True)
+async def assign_role(ctx, member: discord.Member, *, role_name: str):
+    role = discord.utils.get(ctx.guild.roles, name=role_name)
+    if not role:
+        return await ctx.send(f"❌ 서버에서 **'{role_name}'** 역할을 찾을 수 없습니다!", delete_after=5)
+    
+    try:
+        await member.add_roles(role)
+        await ctx.send(f"✅ **{member.mention}** 님에게 **{role.name}** 역할을 지급했습니다! 🎉", delete_after=5)
+    except Exception as e:
+        await ctx.send(f"❌ 역할 지급 중 오류가 발생했습니다: {e}", delete_after=5)
 
 @bot.command(name='공지', aliases=['notice'])
 @commands.has_permissions(administrator=True)
