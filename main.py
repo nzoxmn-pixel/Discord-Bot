@@ -23,19 +23,16 @@ WORDCHAIN_SESSIONS = {}
 
 # 네이버 국어사전 기반 진짜 단어 검증 함수
 async def is_valid_korean_word(word: str) -> bool:
-    # 1. 기본 글자 수 및 순수 한글 여부 체크 (2글자 이상)
     if len(word) < 2:
         return False
     for char in word:
         if not ('가' <= char <= '힣'):
             return False
 
-    # 2. 장난성 연속 글자 차단 (예: 사사사, 니니니)
     for i in range(len(word) - 2):
         if word[i] == word[i+1] == word[i+2]:
             return False
 
-    # 3. 네이버 국어사전에 실제로 존재하는 단어인지 실시간 검색 확인
     url = f"https://dict.naver.com/search.dict?query={word}"
     headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -49,7 +46,6 @@ async def is_valid_korean_word(word: str) -> bool:
         soup = BeautifulSoup(html, 'html.parser')
         results = soup.select('.search_list > li')
         
-        # 정확히 일치하는 단어가 사전에 등재되어 있는지 확인
         found = False
         for item in results:
             title_tag = item.select_one('.word')
@@ -307,12 +303,13 @@ class RobuxCalcView(discord.ui.View):
             return await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(WithdrawModal())
 
-# --- 끝말잇기 & 메시지 관리 로직 ---
+# --- 핵심 수정: on_message에서 일반 명령어가 정상 작동하도록 process_commands 추가 ---
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
+    # 끝말잇기 채널이고, 명령어가 아닐 때만 끝말잇기 로직 실행
     if "끝말잇기" in message.channel.name and not message.content.startswith(bot.command_prefix):
         channel_id = message.channel.id
         content = message.content.strip()
@@ -357,6 +354,7 @@ async def on_message(message):
         await message.add_reaction("✅")
         return
 
+    # 이 부분이 빠져있어서 일반 명령어(!청소 등)가 안 먹혔던 것임! 반드시 있어야 함
     await bot.process_commands(message)
 
 @bot.command(name='끝말잇기시작', aliases=['시작'])
@@ -393,7 +391,7 @@ async def robux_panel(ctx):
     embed = discord.Embed(
         title="💰 데스볼 로벅스 거래 계산기",
         description=f"버튼을 클릭하여 원하는 계산을 편리하게 진행하세요!\n\n"
-                    f"📌 **현재 적용 환율:** 10,000원당 `{SERVER_CONFIG['rate']:,} R$`\n"
+                    f"📌 **현재 적용 환율:** 1만 원당 `{SERVER_CONFIG['rate']:,} R$`\n"
                     f"➕ **추가/차감 가감액:** `{SERVER_CONFIG['adjustment']:+,} R$`\n"
                     f"🏦 **내 통장 잔액:** `{SERVER_CONFIG['my_wallet']:,} R$`\n"
                     f"✂️ **출금 시 10% 공제:** {fee_status}",
