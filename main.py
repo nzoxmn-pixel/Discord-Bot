@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 import os
 import aiohttp
-import random
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -287,47 +286,6 @@ async def robux_panel(ctx):
     )
     embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe")
     await ctx.send(embed=embed, view=RobuxCalcView())
-
-# 🛠️ 역할 생성 명령어 (화려하고 눈에 띄는 랜덤 색상 적용)
-@bot.command(name='역할생성', aliases=['역할추가'])
-@commands.has_permissions(manage_roles=True)
-async def create_role(ctx, *, role_name: str):
-    try:
-        vibrant_colors = [
-            discord.Color.brand_red(),
-            discord.Color.brand_green(),
-            discord.Color.blue(),
-            discord.Color.gold(),
-            discord.Color.purple(),
-            discord.Color.magenta(),
-            discord.Color.teal(),
-            discord.Color.blurple(),
-            discord.Color.orange()
-        ]
-        random_color = random.choice(vibrant_colors)
-
-        new_role = await ctx.guild.create_role(
-            name=role_name, 
-            color=random_color, 
-            reason=f"{ctx.author}의 요청으로 생성됨"
-        )
-        await ctx.send(f"✅ 화려한 색상으로 **{new_role.name}** 역할이 생성되었습니다! 🎉", delete_after=5)
-    except Exception as e:
-        await ctx.send(f"❌ 역할을 생성하는 중에 오류가 발생했습니다: {e}", delete_after=5)
-
-# 🛠️ 역할 지정 명령어: !역할지정 [@유저] [역할이름]
-@bot.command(name='역할지정', aliases=['역할부여', '지급'])
-@commands.has_permissions(manage_roles=True)
-async def assign_role(ctx, member: discord.Member, *, role_name: str):
-    role = discord.utils.get(ctx.guild.roles, name=role_name)
-    if not role:
-        return await ctx.send(f"❌ 서버에서 **'{role_name}'** 역할을 찾을 수 없습니다!", delete_after=5)
-    
-    try:
-        await member.add_roles(role)
-        await ctx.send(f"✅ **{member.mention}** 님에게 **{role.name}** 역할을 지급했습니다! 🎉", delete_after=5)
-    except Exception as e:
-        await ctx.send(f"❌ 역할 지급 중 오류가 발생했습니다: {e}", delete_after=5)
 
 @bot.command(name='공지', aliases=['notice'])
 @commands.has_permissions(administrator=True)
