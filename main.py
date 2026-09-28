@@ -303,13 +303,11 @@ class RobuxCalcView(discord.ui.View):
             return await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(WithdrawModal())
 
-# --- 핵심 수정: on_message에서 일반 명령어가 정상 작동하도록 process_commands 추가 ---
 @bot.event
 async def on_message(message):
     if message.author.bot:
         return
 
-    # 끝말잇기 채널이고, 명령어가 아닐 때만 끝말잇기 로직 실행
     if "끝말잇기" in message.channel.name and not message.content.startswith(bot.command_prefix):
         channel_id = message.channel.id
         content = message.content.strip()
@@ -319,20 +317,17 @@ async def on_message(message):
 
         session = WORDCHAIN_SESSIONS[channel_id]
         
-        # 1. 연속 입력 방지
         if session["last_user"] == message.author.id:
             await message.add_reaction("❌")
             await message.channel.send(f"{message.author.mention} 님, 혼자서 연속으로 이어갈 수 없어요!", delete_after=3)
             return
 
-        # 2. 네이버 국어사전 실제 존재 여부 검증 (없는 단어 원천 차단)
         valid = await is_valid_korean_word(content)
         if not valid:
             await message.add_reaction("❌")
             await message.channel.send(f"{message.author.mention} ❌ 국어사전에 없는 단어이거나 올바르지 않은 입력입니다!", delete_after=3)
             return
 
-        # 3. 두음법칙 처리
         required_char = session["last_word"][-1]
         duum_map = {
             '녀':['여'],'뇨':['요'],'뉴':['유'],'니':['이'],
@@ -348,13 +343,11 @@ async def on_message(message):
             await message.channel.send(f"{message.author.mention} ❌ **'{required_char}'**(으)로 시작해야 합니다!", delete_after=3)
             return
 
-        # 정답 처리
         session["last_word"] = content
         session["last_user"] = message.author.id
         await message.add_reaction("✅")
         return
 
-    # 이 부분이 빠져있어서 일반 명령어(!청소 등)가 안 먹혔던 것임! 반드시 있어야 함
     await bot.process_commands(message)
 
 @bot.command(name='끝말잇기시작', aliases=['시작'])
