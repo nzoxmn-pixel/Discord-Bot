@@ -9,13 +9,16 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# 서버 설정 (환율 + 추가/차감 가감액 + 내 통장 잔액 + 출금 10% 공제 토글 여부)
+# 서버 설정
 SERVER_CONFIG = {
-    "rate": 1250,            # 1만 원당 기본 1,250 로벅스
-    "adjustment": 0,         # 추가(+)/차감(-)할 고정 로벅스
-    "my_wallet": 0,          # 내 통장에 쌓인 로벅스 잔액
-    "withdraw_fee": False    # 출금 시 10% 공제 토글 여부
+    "rate": 1250,            
+    "adjustment": 0,         
+    "my_wallet": 0,          
+    "withdraw_fee": False    
 }
+
+# 끝말잇기 게임 상태 저장용 (채널ID별 관리)
+WORDCHAIN_SESSIONS = {}
 
 # 1. 로블록스 아이디 인증 모달
 class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 인증"):
@@ -94,19 +97,16 @@ class VerifyView(discord.ui.View):
     async def verify_button_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RobloxVerifyModal())
 
-# 2. 계산기 및 관리자 설정 모달들
+# 2. 계산기 모달들
 class CalcKrwModal(discord.ui.Modal, title="원화 ➔ 로벅스 계산"):
     krw_input = discord.ui.TextInput(label="원화 금액 (원)", placeholder="예: 10000", required=True)
-
     async def on_submit(self, interaction: discord.Interaction):
         try:
             krw = int(self.krw_input.value.strip().replace(",", ""))
             rate = SERVER_CONFIG["rate"]
             adj = SERVER_CONFIG["adjustment"]
-            
             base_robux = int(krw * (rate / 10000))
             final_robux = base_robux + adj 
-            
             await interaction.response.send_message(
                 f"🧮 **{krw:,}원** ➔ 기본 계산: `{base_robux:,} R$`\n"
                 f"⚖️ 가감액 적용: `{adj:+,} R$`\n"
@@ -117,7 +117,6 @@ class CalcKrwModal(discord.ui.Modal, title="원화 ➔ 로벅스 계산"):
 
 class CalcRobuxModal(discord.ui.Modal, title="로벅스 ➔ 원화 역계산"):
     robux_input = discord.ui.TextInput(label="로벅스 금액 (R$)", placeholder="예: 1300", required=True)
-
     async def on_submit(self, interaction: discord.Interaction):
         try:
             robux = int(self.robux_input.value.strip().replace(",", ""))
@@ -129,7 +128,6 @@ class CalcRobuxModal(discord.ui.Modal, title="로벅스 ➔ 원화 역계산"):
 
 class CalcFeeModal(discord.ui.Modal, title="마켓플레이스 수수료 계산"):
     fee_input = discord.ui.TextInput(label="판매 등록 로벅스 (R$)", placeholder="예: 1000", required=True)
-
     async def on_submit(self, interaction: discord.Interaction):
         try:
             amount = int(self.fee_input.value.strip().replace(",", ""))
@@ -141,28 +139,22 @@ class CalcFeeModal(discord.ui.Modal, title="마켓플레이스 수수료 계산"
 
 class SetRateModal(discord.ui.Modal, title="서버 거래 환율 설정"):
     rate_input = discord.ui.TextInput(label="1만 원당 로벅스 (R$)", placeholder="예: 1250", required=True)
-
     async def on_submit(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
         try:
             new_rate = int(self.rate_input.value.strip().replace(",", ""))
-            if new_rate <= 0:
-                await interaction.response.send_message("❌ 0보다 커야 합니다!", ephemeral=True)
-                return
+            if new_rate <= 0: return await interaction.response.send_message("❌ 0보다 커야 합니다!", ephemeral=True)
             SERVER_CONFIG["rate"] = new_rate
             await interaction.response.send_message(f"⚙️ 환율 변경 완료: 10,000원당 **`{new_rate:,} R$`**", ephemeral=True)
         except ValueError:
             await interaction.response.send_message("❌ 숫자로 입력해주세요!", ephemeral=True)
 
 class SetAdjustmentModal(discord.ui.Modal, title="추가/차감 가감액 설정"):
-    adj_input = discord.ui.TextInput(label="가감액 (음수 가능, 예: 50 또는 -20)", placeholder="예: 50", required=True)
-
+    adj_input = discord.ui.TextInput(label="가감액 (음수 가능)", placeholder="예: 50", required=True)
     async def on_submit(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
         try:
             val = int(self.adj_input.value.strip().replace(",", ""))
             SERVER_CONFIG["adjustment"] = val
@@ -173,16 +165,12 @@ class SetAdjustmentModal(discord.ui.Modal, title="추가/차감 가감액 설정
 
 class DepositModal(discord.ui.Modal, title="내 통장 입금"):
     dep_input = discord.ui.TextInput(label="입금할 로벅스 (R$)", placeholder="예: 1000", required=True)
-
     async def on_submit(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
         try:
             val = int(self.dep_input.value.strip().replace(",", ""))
-            if val <= 0:
-                await interaction.response.send_message("❌ 0보다 큰 금액을 입금하세요!", ephemeral=True)
-                return
+            if val <= 0: return await interaction.response.send_message("❌ 0보다 큰 금액을 입금하세요!", ephemeral=True)
             SERVER_CONFIG["my_wallet"] += val
             await interaction.response.send_message(f"📥 **+{val:,} R$`** 입금 완료! (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)", ephemeral=True)
         except ValueError:
@@ -190,66 +178,45 @@ class DepositModal(discord.ui.Modal, title="내 통장 입금"):
 
 class WithdrawModal(discord.ui.Modal, title="내 통장 출금"):
     wit_input = discord.ui.TextInput(label="출금할 로벅스 (R$)", placeholder="예: 500", required=True)
-
     async def on_submit(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 가능합니다!", ephemeral=True)
         try:
             val = int(self.wit_input.value.strip().replace(",", ""))
-            if val <= 0:
-                await interaction.response.send_message("❌ 0보다 큰 금액을 출금하세요!", ephemeral=True)
-                return
+            if val <= 0: return await interaction.response.send_message("❌ 0보다 큰 금액을 출금하세요!", ephemeral=True)
             
-            if SERVER_CONFIG["withdraw_fee"]:
-                actual_withdraw = int(val * 0.9)
-                deducted = val - actual_withdraw
-            else:
-                actual_withdraw = val
-                deducted = 0
+            actual_withdraw = int(val * 0.9) if SERVER_CONFIG["withdraw_fee"] else val
+            deducted = val - actual_withdraw
 
             if SERVER_CONFIG["my_wallet"] < actual_withdraw:
-                await interaction.response.send_message(f"❌ 잔액이 부족합니다! (현재 잔액: `{SERVER_CONFIG['my_wallet']:,} R$`)", ephemeral=True)
-                return
+                return await interaction.response.send_message(f"❌ 잔액이 부족합니다! (현재 잔액: `{SERVER_CONFIG['my_wallet']:,} R$`)", ephemeral=True)
 
             SERVER_CONFIG["my_wallet"] -= actual_withdraw
-            
             msg = f"📤 **-{actual_withdraw:,} R$`** 출금 완료!"
             if SERVER_CONFIG["withdraw_fee"]:
                 msg += f" (출금 요청: {val:,} R$ | 10% 공제: -{deducted:,} R$)"
             msg += f" (현재 잔액: **`{SERVER_CONFIG['my_wallet']:,} R$`**)"
-
             await interaction.response.send_message(msg, ephemeral=True)
         except ValueError:
             await interaction.response.send_message("❌ 숫자로 입력해주세요!", ephemeral=True)
 
-# 패널 임베드를 새로고침하기 위한 헬퍼 함수
 async def update_panel_message(interaction: discord.Interaction):
-    current_rate = SERVER_CONFIG["rate"]
-    current_adj = SERVER_CONFIG["adjustment"]
-    wallet = SERVER_CONFIG["my_wallet"]
     w_fee = SERVER_CONFIG["withdraw_fee"]
-    
     fee_status = "🟢 켜짐 (10% 공제 적용)" if w_fee else "🔴 꺼짐"
-    
     embed = discord.Embed(
         title="💰 데스볼 로벅스 거래 계산기",
         description=f"버튼을 클릭하여 원하는 계산을 편리하게 진행하세요!\n\n"
-                    f"📌 **현재 적용 환율:** 10,000원당 `{current_rate:,} R$`\n"
-                    f"➕ **추가/차감 가감액:** `{current_adj:+,} R$`\n"
-                    f"🏦 **내 통장 잔액:** `{wallet:,} R$`\n"
+                    f"📌 **현재 적용 환율:** 10,000원당 `{SERVER_CONFIG['rate']:,} R$`\n"
+                    f"➕ **추가/차감 가감액:** `{SERVER_CONFIG['adjustment']:+,} R$`\n"
+                    f"🏦 **내 통장 잔액:** `{SERVER_CONFIG['my_wallet']:,} R$`\n"
                     f"✂️ **출금 시 10% 공제:** {fee_status}",
         color=0xF1C40F
     )
-    # 여기에 방금 보내주신 로벅스 이미지가 작게 들어가도록 설정했습니다!
-    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe") # (임시 예시 링크, 원하시는 이미지 직링크로 교체 가능)
+    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe")
     embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
-    try:
-        await interaction.message.edit(embed=embed)
-    except:
-        pass
+    try: await interaction.message.edit(embed=embed)
+    except: pass
 
-# 3. 버튼형 UI 뷰 클래스
 class RobuxCalcView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -269,88 +236,132 @@ class RobuxCalcView(discord.ui.View):
     @discord.ui.button(label="✂️ 출금 10% 공제 토글", style=discord.ButtonStyle.blurple, custom_id="toggle_withdraw_fee_btn", row=0)
     async def btn_toggle_withdraw_fee(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 서버 관리자만 변경할 수 있습니다!", ephemeral=True)
-            return
-        
+            return await interaction.response.send_message("❌ 서버 관리자만 변경할 수 있습니다!", ephemeral=True)
         SERVER_CONFIG["withdraw_fee"] = not SERVER_CONFIG["withdraw_fee"]
         status_text = "켜졌습니다! (출금 시 10% 공제 적용)" if SERVER_CONFIG["withdraw_fee"] else "꺼졌습니다."
-        
         await interaction.response.send_message(f"✂️ 출금 10% 공제 기능이 **{status_text}**", ephemeral=True)
         await update_panel_message(interaction)
 
     @discord.ui.button(label="⚙️ 환율 설정", style=discord.ButtonStyle.danger, custom_id="set_rate_btn", row=1)
     async def btn_set_rate(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(SetRateModal())
 
     @discord.ui.button(label="⚖️ 가감액 설정", style=discord.ButtonStyle.danger, custom_id="set_adj_btn", row=1)
     async def btn_set_adj(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(SetAdjustmentModal())
 
     @discord.ui.button(label="📥 통장 입금", style=discord.ButtonStyle.secondary, custom_id="deposit_btn", row=1)
     async def btn_deposit(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(DepositModal())
 
     @discord.ui.button(label="📤 통장 출금", style=discord.ButtonStyle.secondary, custom_id="withdraw_btn", row=1)
     async def btn_withdraw(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ 서버 관리자만 사용할 수 있습니다!", ephemeral=True)
-            return
+            return await interaction.response.send_message("❌ 관리자만 사용할 수 있습니다!", ephemeral=True)
         await interaction.response.send_modal(WithdrawModal())
 
+# --- 끝말잇기 & 메시지 관리 로직 ---
 @bot.event
-async def on_ready():
-    print(f'로그인 완료: {bot.user} (ID: {bot.user.id})')
-    if not any(isinstance(view, VerifyView) for view in bot.persistent_views):
-        bot.add_view(VerifyView())
-    if not any(isinstance(view, RobuxCalcView) for view in bot.persistent_views):
-        bot.add_view(RobuxCalcView())
-    
-    await bot.change_presence(activity=discord.Game(name="!계산패널 입력하기"))
+async def on_message(message):
+    # 1. 봇이 보낸 메시지는 무조건 무시
+    if message.author.bot:
+        return
 
-# 인증 패널 생성
+    # 2. 끝말잇기 채널 전용 로직 (명령어가 아닌 일반 대화일 때만 발동)
+    if "끝말잇기" in message.channel.name and not message.content.startswith(bot.command_prefix):
+        channel_id = message.channel.id
+        content = message.content.strip()
+
+        # 시작 안 한 상태면 기본값 할당
+        if channel_id not in WORDCHAIN_SESSIONS:
+            WORDCHAIN_SESSIONS[channel_id] = {"last_word": "사과", "last_user": None}
+
+        session = WORDCHAIN_SESSIONS[channel_id]
+        
+        # 연속 입력 방지
+        if session["last_user"] == message.author.id:
+            await message.add_reaction("❌")
+            await message.channel.send(f"{message.author.mention} 님, 혼자서 연속으로 이어갈 수 없어요!", delete_after=3)
+            return
+
+        # 한 글자 방지
+        if len(content) < 2:
+            await message.add_reaction("❌")
+            return
+
+        # 두음법칙 처리
+        required_char = session["last_word"][-1]
+        duum_map = {
+            '녀':['여'],'뇨':['요'],'뉴':['유'],'니':['이'],
+            '랴':['야'],'롸':['와'],'래':['내'],'로':['노'],
+            '률':['율'],'렬':['열'],'락':['낙'],'랑':['낭']
+        }
+        valid_starts = [required_char]
+        if required_char in duum_map:
+            valid_starts.extend(duum_map[required_char])
+
+        # 판정 처리
+        if content[0] not in valid_starts:
+            await message.add_reaction("❌")
+            await message.channel.send(f"{message.author.mention} ❌ **'{required_char}'**(으)로 시작해야 합니다!", delete_after=3)
+            return
+
+        # 정답일 경우 세션 갱신
+        session["last_word"] = content
+        session["last_user"] = message.author.id
+        await message.add_reaction("✅")
+        return # 끝말잇기 채널의 일반 채팅은 여기서 검사 끝 (명령어 처리 안함)
+
+    # 3. 위 조건들에 해당하지 않으면 일반 명령어(!공지 등) 처리
+    await bot.process_commands(message)
+
+@bot.command(name='끝말잇기시작', aliases=['시작'])
+async def start_wordchain(ctx, *, start_word: str = "바나나"):
+    if "끝말잇기" not in ctx.channel.name:
+        return await ctx.send("❌ 이 명령어는 **끝말잇기 채널**에서만 사용할 수 있습니다!", delete_after=5)
+    
+    cleaned_word = start_word.strip()
+    if len(cleaned_word) < 2:
+        return await ctx.send("❌ 제시어는 2글자 이상이어야 합니다!", delete_after=5)
+
+    WORDCHAIN_SESSIONS[ctx.channel.id] = {"last_word": cleaned_word, "last_user": None}
+
+    embed = discord.Embed(
+        title="🎮 끝말잇기 게임 시작!",
+        description=f"현재 제시어: **`{cleaned_word}`**\n"
+                    f"마지막 글자 **'{cleaned_word[-1]}'**로 시작하는 단어를 입력하세요!",
+        color=0x3498DB
+    )
+    await ctx.send(embed=embed)
+
 @bot.command(name='인증패널')
 @commands.has_permissions(administrator=True)
 async def verify_panel(ctx):
-    embed = discord.Embed(
-        title="🛡️ 로블록스 디스코드 연동 인증",
-        description="버튼을 눌러 본인의 로블록스 **아이디**를 입력해 주세요!",
-        color=0x00ff00
-    )
+    embed = discord.Embed(title="🛡️ 로블록스 디스코드 연동 인증", description="버튼을 눌러 아이디를 입력해 주세요!", color=0x00ff00)
     await ctx.send(embed=embed, view=VerifyView())
 
-# 계산 패널 생성
 @bot.command(name='계산패널', aliases=['로벅스패널'])
 @commands.has_permissions(administrator=True)
 async def robux_panel(ctx):
     await ctx.message.delete()
-    current_rate = SERVER_CONFIG["rate"]
-    current_adj = SERVER_CONFIG["adjustment"]
-    wallet = SERVER_CONFIG["my_wallet"]
     w_fee = SERVER_CONFIG["withdraw_fee"]
-    
     fee_status = "🟢 켜짐 (10% 공제 적용)" if w_fee else "🔴 꺼짐"
-    
     embed = discord.Embed(
         title="💰 데스볼 로벅스 거래 계산기",
         description=f"버튼을 클릭하여 원하는 계산을 편리하게 진행하세요!\n\n"
-                    f"📌 **현재 적용 환율:** 10,000원당 `{current_rate:,} R$`\n"
-                    f"➕ **추가/차감 가감액:** `{current_adj:+,} R$`\n"
-                    f"🏦 **내 통장 잔액:** `{wallet:,} R$`\n"
+                    f"📌 **현재 적용 환율:** 10,000원당 `{SERVER_CONFIG['rate']:,} R$`\n"
+                    f"➕ **추가/차감 가감액:** `{SERVER_CONFIG['adjustment']:+,} R$`\n"
+                    f"🏦 **내 통장 잔액:** `{SERVER_CONFIG['my_wallet']:,} R$`\n"
                     f"✂️ **출금 시 10% 공제:** {fee_status}",
         color=0xF1C40F
     )
-    # 여기에 원하시는 이미지 링크를 넣으시면 패널 오른쪽에 작은 사진으로 뜹니다!
-    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe") 
-    embed.set_footer(text="※ 본 계산기는 서버 거래 편의를 위해 제공됩니다.")
+    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe")
     await ctx.send(embed=embed, view=RobuxCalcView())
 
 @bot.command(name='공지', aliases=['notice'])
@@ -371,8 +382,18 @@ async def clear_messages(ctx, amount: int = 30):
 @commands.has_permissions(manage_messages=True)
 async def clear_bot_messages(ctx, amount: int = 30):
     await ctx.message.delete()
-    deleted = await ctx.channel.purge(limit=amount, check=lambda m: not m.author.bot)
+    # [수정됨] 봇 메시지만 정상적으로 지우도록 변경 (m.author.bot)
+    deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author.bot)
     await ctx.send(f"🤖 봇 메시지 **{len(deleted)}개** 청소 완료!", delete_after=3)
+
+@bot.event
+async def on_ready():
+    print(f'로그인 완료: {bot.user} (ID: {bot.user.id})')
+    if not any(isinstance(view, VerifyView) for view in bot.persistent_views):
+        bot.add_view(VerifyView())
+    if not any(isinstance(view, RobuxCalcView) for view in bot.persistent_views):
+        bot.add_view(RobuxCalcView())
+    await bot.change_presence(activity=discord.Game(name="!계산패널 입력하기"))
 
 token = os.getenv("TOKEN")
 if token is None:
