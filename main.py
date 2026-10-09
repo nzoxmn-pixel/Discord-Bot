@@ -117,7 +117,36 @@ class RobuxCalcModal(discord.ui.Modal, title="로벅스 수수료 계산기"):
         embed.add_field(name="💰 실수령액 (70%)", value=f"`{received:,} R$`", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# --- 버튼 패널 및 인증 뷰 ---
+class RobloxVerifyModal(discord.ui.Modal, title="로블록스 계정 연동 인증"):
+    roblox_name = discord.ui.TextInput(
+        label="로블록스 닉네임을 입력하세요",
+        placeholder="예: Zett",
+        required=True,
+        max_length=50
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        nickname = self.roblox_name.value.strip()
+        role_name = "인증됨"  # 서버에 부여할 역할 이름 (서버 설정과 일치해야 함)
+        role = discord.utils.get(interaction.guild.roles, name=role_name)
+        
+        if not role:
+            await interaction.response.send_message(f"서버에 '{role_name}' 역할이 없습니다. 관리자에게 문의하세요.", ephemeral=True)
+            return
+
+        try:
+            # 닉네임 변경 기능 (선택사항, 권한이 없으면 제외될 수 있음)
+            try:
+                await interaction.user.edit(nick=nickname)
+            except Exception:
+                pass
+
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message(f"✅ 성공적으로 인증되었습니다! (연동 닉네임: **{nickname}**)", ephemeral=True)
+        except Exception:
+            await interaction.response.send_message("인증 처리 중 오류가 발생했습니다. 봇의 권한(역할 순서 등)을 확인해주세요.", ephemeral=True)
+
+# --- 버튼 패널 뷰 ---
 class MainPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -130,30 +159,17 @@ class MainPanelView(discord.ui.View):
     async def btn_calc(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(RobuxCalcModal())
 
-    @discord.ui.button(label="✅ 서버 인증", style=discord.ButtonStyle.secondary, custom_id="btn_verify")
+    @discord.ui.button(label="로블록스 인증하기", style=discord.ButtonStyle.success, custom_id="btn_roblox_verify")
     async def btn_verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        role_name = "인증됨"
-        role = discord.utils.get(interaction.guild.roles, name=role_name)
-        if not role:
-            await interaction.response.send_message(f"서버에 '{role_name}' 역할이 존재하지 않습니다. 관리자에게 문의하세요.", ephemeral=True)
-            return
-        
-        if role in interaction.user.roles:
-            await interaction.response.send_message("이미 인증을 완료하셨습니다!", ephemeral=True)
-        else:
-            try:
-                await interaction.user.add_roles(role)
-                await interaction.response.send_message("✅ 성공적으로 인증되었습니다!", ephemeral=True)
-            except Exception:
-                await interaction.response.send_message("역할 부여 중 오류가 발생했습니다. 봇의 권한을 확인해주세요.", ephemeral=True)
+        await interaction.response.send_modal(RobloxVerifyModal())
 
 # --- 명령어 정의 ---
 @bot.command(name="패널")
 async def panel(ctx):
     embed = discord.Embed(
-        title="🤖 로블록스 통합 관리 패널",
-        description="아래 버튼을 눌러 시세 검색, 로벅스 계산, 서버 인증을 이용하세요!",
-        color=0x3498db
+        title="🛡️ 로블록스 디스코드 연동 인증",
+        description="서버를 이용하려면 아래의 **[로블록스 인증하기]** 버튼을 누르고 본인의 로블록스 닉네임을 입력해 주세요!",
+        color=0x57F287
     )
     await ctx.send(embed=embed, view=MainPanelView())
 
