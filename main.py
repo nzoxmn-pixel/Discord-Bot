@@ -190,7 +190,7 @@ async def cmd_robux(ctx):
     try: await ctx.message.delete()
     except: pass
     embed = discord.Embed(
-        title="💎 데스볼 로벅스 거래 계산기",
+        title="💰 로블록스 로벅스 거래 계산기",
         description="버튼을 클릭하여 원하는 계산을 편리하게 진행하세요!\n\n📌 **현재 적용 환율:** 10,000원당 `1,250 R$`\n➕ **추가/차감 가감액:** `+0 R$`\n🏦 **내 통장 잔액:** `0 R$`\n✂️ **출금 시 10% 공제:** 🔴 `꺼짐`",
         color=0xFEE75C
     )
