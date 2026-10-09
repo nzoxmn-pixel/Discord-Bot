@@ -197,6 +197,68 @@ class WithdrawModal(discord.ui.Modal, title="내 통장 출금"):
         except ValueError:
             await interaction.response.send_message("❌ 숫자로 입력해주세요!", ephemeral=True)
 
+# 3. 로블록스 한정판(Limited) 아이템 시세 조회 모달
+class ItemCheckModal(discord.ui.Modal, title="로블록스 아이템 시세 조회"):
+    item_id_input = discord.ui.TextInput(
+        label="아이템 ID 입력",
+        placeholder="예: 1028606 (롤리몬즈 아이템 ID)",
+        required=True,
+        max_length=20
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        item_id = self.item_id_input.value.strip()
+        await interaction.response.defer(ephemeral=True)
+
+        url = "https://www.rolimons.com/itemapi/itemdetails"
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        return await interaction.followup.send("❌ 시세 API 서버와 통신 중 오류가 발생했습니다.", ephemeral=True)
+                    
+                    data = await resp.json()
+                    items = data.get("items", {})
+
+                    if item_id not in items:
+                        return await interaction.followup.send(f"❌ ID `{item_id}`에 해당하는 아이템 정보를 찾을 수 없습니다. (올바른 롤리몬즈 아이템 ID를 입력해주세요)", ephemeral=True)
+
+                    info = items[item_id]
+                    name = info[0]
+                    rap = info[2]
+                    value = info[3]
+                    demand = info[5]
+                    trend = info[6]
+
+                    val_str = f"{value:,} R$" if value != -1 else "없음"
+                    demand_map = {-1: "알 수 없음", 0: "끔찍함", 1: "낮음", 2: "보통", 3: "높음", 4: "매우 높음"}
+                    trend_map = {-1: "알 수 없음", 0: "하락세", 1: "안정세", 2: "상승세", 3: "폭등세"}
+
+                    embed = discord.Embed(
+                        title=f"📊 아이템 시세 정보: {name}",
+                        description=f"🔗 **아이템 ID:** `{item_id}`",
+                        color=0x3498DB
+                    )
+                    embed.add_field(name="✨ RAP (평균 거래가)", value=f"`{rap:,} R$`" if rap != -1 else "`정보 없음`", inline=True)
+                    embed.add_field(name="💎 가치 (Value)", value=f"`{val_str}`", inline=True)
+                    embed.add_field(name="🔥 수요 (Demand)", value=f"`{demand_map.get(demand, '알 수 없음')}`", inline=True)
+                    embed.add_field(name="📈 트렌드", value=f"`{trend_map.get(trend, '알 수 없음')}`", inline=True)
+                    embed.set_thumbnail(url=f"https://www.roblox.com/asset-thumbnail/image?assetId={int(item_id)}&width=420&height=420&format=png")
+
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ 오류 발생: {e}", ephemeral=True)
+
+class ItemCheckView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🔍 아이템 시세 검색하기", style=discord.ButtonStyle.primary, custom_id="item_check_modal_btn")
+    async def item_check_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ItemCheckModal())
+
 async def update_panel_message(interaction: discord.Interaction):
     w_fee = SERVER_CONFIG["withdraw_fee"]
     fee_status = "🟢 켜짐 (10% 공제 적용)" if w_fee else "🔴 꺼짐"
@@ -287,6 +349,17 @@ async def robux_panel(ctx):
     embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe")
     await ctx.send(embed=embed, view=RobuxCalcView())
 
+@bot.command(name='시세패널', aliases=['아이템패널'])
+@commands.has_permissions(administrator=True)
+async def item_panel(ctx):
+    await ctx.message.delete()
+    embed = discord.Embed(
+        title="📈 로블록스 한정판(Limited) 시세 조회",
+        description="아래 버튼을 눌러 아이템 ID를 입력하면 실시간 RAP 및 가치 정보를 확인할 수 있습니다!",
+        color=0x3498DB
+    )
+    await ctx.send(embed=embed, view=ItemCheckView())
+
 @bot.command(name='공지', aliases=['notice'])
 @commands.has_permissions(administrator=True)
 async def notice_command(ctx, *, text: str):
@@ -315,6 +388,8 @@ async def on_ready():
         bot.add_view(VerifyView())
     if not any(isinstance(view, RobuxCalcView) for view in bot.persistent_views):
         bot.add_view(RobuxCalcView())
+    if not any(isinstance(view, ItemCheckView) for view in bot.persistent_views):
+        bot.add_view(ItemCheckView())
     await bot.change_presence(activity=discord.Game(name="!계산패널 입력하기"))
 
 token = os.getenv("TOKEN")
