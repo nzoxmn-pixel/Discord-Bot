@@ -210,9 +210,10 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
 
             past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
             
+            mention_text = f"{interaction.user.mention} 님의 연동 정보입니다."
+            
             embed = discord.Embed(
                 title="✨ 새로운 플레이어 인증 완료!",
-                description=f"디스코드 유저 <@{interaction.user.id}> 님의 연동 정보입니다.",
                 color=0x57F287
             )
             embed.add_field(name="👤 로블록스 닉네임", value=f"`{info['name']}`", inline=False)
@@ -224,7 +225,11 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
             if info["thumb_url"]:
                 embed.set_thumbnail(url=info["thumb_url"])
                 
-            await interaction.channel.send(embed=embed)
+            # '한국인-플레이어' 채널을 찾아 전송 (없으면 인증을 진행한 현재 채널로 전송)
+            log_channel = discord.utils.get(interaction.guild.text_channels, name="한국인-플레이어")
+            target_channel = log_channel if log_channel else interaction.channel
+            
+            await target_channel.send(content=mention_text, embed=embed)
 
         except Exception as e:
             await interaction.followup.send(f"❌ 권한 오류 또는 처리 중 문제가 발생했습니다: `{e}`", ephemeral=True)
