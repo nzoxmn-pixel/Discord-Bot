@@ -202,21 +202,22 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
             return await interaction.followup.send("❌ 존재하지 않는 로블록스 닉네임이거나 API 오류입니다.", ephemeral=True)
 
         try:
-            try: await interaction.user.edit(nick=info["name"])
-            except: pass
+            # 닉네임 변경 기능 제거 (디스코드 본래 유저 멘션이 유지되도록 함)
             await interaction.user.add_roles(role)
             
-            await interaction.followup.send(f"✅ 연동 완료! 닉네임이 **{info['name']}**(으)로 변경되었습니다.", ephemeral=True)
+            await interaction.followup.send(f"✅ 연동 완료! 역할이 부여되었습니다.", ephemeral=True)
 
             past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
             
+            # 디스코드 유저 멘션
             mention_text = f"{interaction.user.mention} 님의 연동 정보입니다."
             
             embed = discord.Embed(
                 title="✨ 새로운 플레이어 인증 완료!",
                 color=0x57F287
             )
-            embed.add_field(name="👤 로블록스 닉네임", value=f"`{info['name']}`", inline=False)
+            embed.add_field(name="👤 디스코드 유저", value=f"{interaction.user.mention} (`{interaction.user}`)", inline=False)
+            embed.add_field(name="🎮 로블록스 닉네임", value=f"`{info['name']}`", inline=False)
             embed.add_field(name="📛 표시 이름", value=f"`{info['display_name']}`", inline=False)
             embed.add_field(name="🆔 로블록스 숫자 ID", value=f"`{info['user_id']}`", inline=False)
             embed.add_field(name="📅 계정 생성일", value=f"`{info['created_at']}`", inline=False)
@@ -225,10 +226,11 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
             if info["thumb_url"]:
                 embed.set_thumbnail(url=info["thumb_url"])
                 
-            # '한국인-플레이어' 채널을 찾아 전송 (없으면 인증을 진행한 현재 채널로 전송)
-            log_channel = discord.utils.get(interaction.guild.text_channels, name="한국인-플레이어")
-            target_channel = log_channel if log_channel else interaction.channel
-            
+            # '한국인-플레이어' 채널을 유연하게 검색 (특수문자 포함 여부 무관하게 검색)
+            target_channel = discord.utils.find(lambda c: "한국인-플레이어" in c.name, interaction.guild.text_channels)
+            if not target_channel:
+                target_channel = interaction.channel
+                
             await target_channel.send(content=mention_text, embed=embed)
 
         except Exception as e:
