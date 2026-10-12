@@ -71,10 +71,8 @@ async def fetch_item_embed(item_id: int):
         embed.set_thumbnail(url=thumbnail_url)
     return embed
 
-# --- 로블록스 정보 조회 함수 (아바타, 가입일, 이전 닉네임) ---
 async def get_roblox_user_info(username: str):
     async with aiohttp.ClientSession() as session:
-        # 1. 닉네임으로 사용자 ID 및 표시 이름 검색
         payload = {
             "usernames": [username],
             "excludeBannedUsers": True
@@ -90,7 +88,6 @@ async def get_roblox_user_info(username: str):
             name = user_data["name"]
             display_name = user_data.get("displayName", name)
 
-        # 2. 상세 정보(가입일 등) 조회
         async with session.get(f"https://users.roblox.com/v1/users/{user_id}") as resp:
             if resp.status != 200:
                 created_at = "알 수 없음"
@@ -98,19 +95,16 @@ async def get_roblox_user_info(username: str):
                 detail_data = await resp.json()
                 raw_date = detail_data.get("created")
                 if raw_date:
-                    # 날짜 형식 변환 (YYYY-MM-DD)
                     created_at = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).strftime("%Y년 %m월 %d일")
                 else:
                     created_at = "알 수 없음"
 
-        # 3. 과거 사용 아이디(이전 닉네임) 조회
         past_names = []
         async with session.get(f"https://users.roblox.com/v1/users/{user_id}/username-history") as resp:
             if resp.status == 200:
                 history_data = await resp.json()
                 past_names = [item.get("name") for item in history_data.get("data", [])]
 
-        # 4. 아바타 썸네일 조회
         thumb_url = None
         thumb_api = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
         async with session.get(thumb_api) as resp:
@@ -203,21 +197,17 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
         
         await interaction.response.defer(thinking=True, ephemeral=True)
         
-        # 로블록스 API 정보 조회
         info = await get_roblox_user_info(nickname)
         if not info:
             return await interaction.followup.send("❌ 존재하지 않는 로블록스 닉네임이거나 API 오류입니다.", ephemeral=True)
 
         try:
-            # 닉네임 변경 시도 및 역할 부여
             try: await interaction.user.edit(nick=info["name"])
             except: pass
             await interaction.user.add_roles(role)
             
-            # 연동 완료 안내 메시지 (본인에게만 표시)
             await interaction.followup.send(f"✅ 연동 완료! 닉네임이 **{info['name']}**(으)로 변경되었습니다.", ephemeral=True)
 
-            # 채널에 인증 성공 카드 전송 (유저 멘션 포함)
             past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
             
             embed = discord.Embed(
@@ -312,7 +302,7 @@ async def cmd_clear(ctx, amount: int = 10):
     except: pass
     deleted = await ctx.channel.purge(limit=amount)
     msg = await ctx.channel.send(f"🧹 **{len(deleted)}개**의 메시지를 청소했습니다!")
-    await msg.delete(delete_after=3)
+    await msg.delete(delay=3)
 
 @bot.command(name="봇청소")
 @commands.has_permissions(manage_messages=True)
@@ -321,7 +311,7 @@ async def cmd_bot_clear(ctx, amount: int = 20):
     except: pass
     deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author == bot.user)
     msg = await ctx.channel.send(f"🧹 봇 메시지 **{len(deleted)}개**를 청소했습니다!")
-    await msg.delete(delete_after=3)
+    await msg.delete(delay=3)
 
 token = os.getenv("TOKEN")
 if not token:
