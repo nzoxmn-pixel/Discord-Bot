@@ -139,9 +139,9 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
     roblox_name = discord.ui.TextInput(label="로블록스 닉네임", placeholder="정확한 닉네임 입력", required=True)
     async def on_submit(self, interaction: discord.Interaction):
         nickname = self.roblox_name.value.strip()
-        role = discord.utils.get(interaction.guild.roles, name="인증됨")
+        role = discord.utils.get(interaction.guild.roles, name="Verified")
         if not role:
-            return await interaction.response.send_message("❌ 서버에 '인증됨' 역할이 없습니다.", ephemeral=True)
+            return await interaction.response.send_message("❌ 서버에 'Verified' 역할이 없습니다.", ephemeral=True)
         try:
             try: await interaction.user.edit(nick=nickname)
             except: pass
