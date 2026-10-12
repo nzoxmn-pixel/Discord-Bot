@@ -2,6 +2,7 @@ import os
 import discord
 from discord.ext import commands
 import aiohttp
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -69,6 +70,63 @@ async def fetch_item_embed(item_id: int):
     if thumbnail_url:
         embed.set_thumbnail(url=thumbnail_url)
     return embed
+
+# --- 로블록스 정보 조회 함수 (아바타, 가입일, 이전 닉네임) ---
+async def get_roblox_user_info(username: str):
+    async with aiohttp.ClientSession() as session:
+        # 1. 닉네임으로 사용자 ID 및 표시 이름 검색
+        payload = {
+            "usernames": [username],
+            "excludeBannedUsers": True
+        }
+        async with session.post("https://users.roblox.com/v1/usernames/users", json=payload) as resp:
+            if resp.status != 200:
+                return None
+            data = await resp.json()
+            if not data.get("data"):
+                return None
+            user_data = data["data"][0]
+            user_id = user_data["id"]
+            name = user_data["name"]
+            display_name = user_data.get("displayName", name)
+
+        # 2. 상세 정보(가입일 등) 조회
+        async with session.get(f"https://users.roblox.com/v1/users/{user_id}") as resp:
+            if resp.status != 200:
+                created_at = "알 수 없음"
+            else:
+                detail_data = await resp.json()
+                raw_date = detail_data.get("created")
+                if raw_date:
+                    # 날짜 형식 변환 (YYYY-MM-DD)
+                    created_at = datetime.fromisoformat(raw_date.replace("Z", "+00:00")).strftime("%Y년 %m월 %d일")
+                else:
+                    created_at = "알 수 없음"
+
+        # 3. 과거 사용 아이디(이전 닉네임) 조회
+        past_names = []
+        async with session.get(f"https://users.roblox.com/v1/users/{user_id}/username-history") as resp:
+            if resp.status == 200:
+                history_data = await resp.json()
+                past_names = [item.get("name") for item in history_data.get("data", [])]
+
+        # 4. 아바타 썸네일 조회
+        thumb_url = None
+        thumb_api = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
+        async with session.get(thumb_api) as resp:
+            if resp.status == 200:
+                thumb_data = await resp.json()
+                if thumb_data.get("data"):
+                    thumb_url = thumb_data["data"][0].get("imageUrl")
+
+        return {
+            "user_id": user_id,
+            "name": name,
+            "display_name": display_name,
+            "created_at": created_at,
+            "past_names": past_names,
+            "thumb_url": thumb_url
+        }
 
 # --- 모달 인터페이스 ---
 class ItemModal(discord.ui.Modal, title="🔍 한정판 아이템 시세 조회"):
@@ -142,13 +200,44 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
         role = discord.utils.get(interaction.guild.roles, name="Verified")
         if not role:
             return await interaction.response.send_message("❌ 서버에 'Verified' 역할이 없습니다.", ephemeral=True)
+        
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        
+        # 로블록스 API 정보 조회
+        info = await get_roblox_user_info(nickname)
+        if not info:
+            return await interaction.followup.send("❌ 존재하지 않는 로블록스 닉네임이거나 API 오류입니다.", ephemeral=True)
+
         try:
-            try: await interaction.user.edit(nick=nickname)
+            # 닉네임 변경 시도 및 역할 부여
+            try: await interaction.user.edit(nick=info["name"])
             except: pass
             await interaction.user.add_roles(role)
-            await interaction.response.send_message(f"✅ 연동 완료! 닉네임이 **{nickname}**(으)로 변경되었습니다.", ephemeral=True)
-        except:
-            await interaction.response.send_message("❌ 권한 오류가 발생했습니다.", ephemeral=True)
+            
+            # 연동 완료 안내 메시지 (본인에게만 표시)
+            await interaction.followup.send(f"✅ 연동 완료! 닉네임이 **{info['name']}**(으)로 변경되었습니다.", ephemeral=True)
+
+            # 채널에 인증 성공 카드 전송 (유저 멘션 포함)
+            past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
+            
+            embed = discord.Embed(
+                title="✨ 새로운 플레이어 인증 완료!",
+                description=f"디스코드 유저 <@{interaction.user.id}> 님의 연동 정보입니다.",
+                color=0x57F287
+            )
+            embed.add_field(name="👤 로블록스 닉네임", value=f"`{info['name']}`", inline=False)
+            embed.add_field(name="📛 표시 이름", value=f"`{info['display_name']}`", inline=False)
+            embed.add_field(name="🆔 로블록스 숫자 ID", value=f"`{info['user_id']}`", inline=False)
+            embed.add_field(name="📅 계정 생성일", value=f"`{info['created_at']}`", inline=False)
+            embed.add_field(name="📜 과거 사용 아이디", value=past_str, inline=False)
+            
+            if info["thumb_url"]:
+                embed.set_thumbnail(url=info["thumb_url"])
+                
+            await interaction.channel.send(embed=embed)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ 권한 오류 또는 처리 중 문제가 발생했습니다: `{e}`", ephemeral=True)
 
 # --- 뷰 클래스 ---
 class TradeCalcView(discord.ui.View):
