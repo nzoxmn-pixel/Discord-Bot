@@ -259,6 +259,7 @@ class ReportModal(discord.ui.Modal, title="🚨 유저 블랙리스트 신고"):
             if info["thumb_url"]:
                 embed.set_thumbnail(url=info["thumb_url"])
 
+            # 'black-list' 단어가 포함된 채널 검색 (이모티콘 무관)
             target_channel = discord.utils.find(lambda c: "black-list" in c.name, interaction.guild.text_channels)
             if not target_channel:
                 target_channel = interaction.channel
