@@ -234,8 +234,16 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
 
 class ReportModal(discord.ui.Modal, title="🚨 유저 블랙리스트 신고"):
     roblox_name = discord.ui.TextInput(label="신고할 로블록스 아이디", placeholder="정확한 아이디 입력", required=True)
+    report_reason = discord.ui.TextInput(
+        label="신고 사유", 
+        placeholder="예: 사기, 핵 사용, 욕설 등", 
+        style=discord.TextStyle.paragraph, 
+        required=True
+    )
+
     async def on_submit(self, interaction: discord.Interaction):
         nickname = self.roblox_name.value.strip()
+        reason = self.report_reason.value.strip()
         await interaction.response.defer(thinking=True, ephemeral=True)
         
         info = await get_roblox_user_info(nickname)
@@ -255,11 +263,11 @@ class ReportModal(discord.ui.Modal, title="🚨 유저 블랙리스트 신고"):
             embed.add_field(name="🆔 로블록스 숫자 ID", value=f"`{info['user_id']}`", inline=False)
             embed.add_field(name="📅 계정 생성일", value=f"`{info['created_at']}`", inline=False)
             embed.add_field(name="📜 과거 사용 아이디", value=past_str, inline=False)
+            embed.add_field(name="📝 신고 사유", value=reason, inline=False)
 
             if info["thumb_url"]:
                 embed.set_thumbnail(url=info["thumb_url"])
 
-            # 'black-list' 단어가 포함된 채널 검색 (이모티콘 무관)
             target_channel = discord.utils.find(lambda c: "black-list" in c.name, interaction.guild.text_channels)
             if not target_channel:
                 target_channel = interaction.channel
@@ -318,7 +326,7 @@ async def cmd_report_panel(ctx):
     except: pass
     embed = discord.Embed(
         title="🚨 데스볼 블랙리스트 신고 패널",
-        description="아래 버튼을 눌러 신고할 유저의 로블록스 아이디를 입력하세요.\n제출된 정보는 `#black-list` 채널에 자동으로 등록됩니다.",
+        description="아래 버튼을 눌러 신고할 유저의 로블록스 아이디와 사유를 입력하세요.\n제출된 정보는 `#black-list` 채널에 자동으로 등록됩니다.",
         color=0xED4245
     )
     await ctx.send(embed=embed, view=ReportView())
