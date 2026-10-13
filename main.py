@@ -15,6 +15,7 @@ user_bank = {}
 async def on_ready():
     bot.add_view(TradeCalcView())
     bot.add_view(VerifyView())
+    bot.add_view(ReportView())
     print(f"로그인 완료: {bot.user}")
 
 async def get_item_thumbnail(item_id: int):
@@ -103,7 +104,7 @@ async def get_roblox_user_info(username: str):
         async with session.get(f"https://users.roblox.com/v1/users/{user_id}/username-history") as resp:
             if resp.status == 200:
                 history_data = await resp.json()
-                past_names = [item.get("name") for item in history_data.get("data", [])]
+                past_names = [item.get("name"] for item in history_data.get("data", [])]
 
         thumb_url = None
         thumb_api = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
@@ -202,14 +203,10 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
             return await interaction.followup.send("❌ 존재하지 않는 로블록스 닉네임이거나 API 오류입니다.", ephemeral=True)
 
         try:
-            # 닉네임 변경 기능 제거 (디스코드 본래 유저 멘션이 유지되도록 함)
             await interaction.user.add_roles(role)
-            
             await interaction.followup.send(f"✅ 연동 완료! 역할이 부여되었습니다.", ephemeral=True)
 
             past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
-            
-            # 디스코드 유저 멘션
             mention_text = f"{interaction.user.mention} 님의 연동 정보입니다."
             
             embed = discord.Embed(
@@ -226,7 +223,6 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
             if info["thumb_url"]:
                 embed.set_thumbnail(url=info["thumb_url"])
                 
-            # '한국인-플레이어' 채널을 유연하게 검색 (특수문자 포함 여부 무관하게 검색)
             target_channel = discord.utils.find(lambda c: "한국인-플레이어" in c.name, interaction.guild.text_channels)
             if not target_channel:
                 target_channel = interaction.channel
@@ -235,6 +231,43 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
 
         except Exception as e:
             await interaction.followup.send(f"❌ 권한 오류 또는 처리 중 문제가 발생했습니다: `{e}`", ephemeral=True)
+
+class ReportModal(discord.ui.Modal, title="🚨 유저 블랙리스트 신고"):
+    roblox_name = discord.ui.TextInput(label="신고할 로블록스 닉네임", placeholder="정확한 닉네임 입력", required=True)
+    async def on_submit(self, interaction: discord.Interaction):
+        nickname = self.roblox_name.value.strip()
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        
+        info = await get_roblox_user_info(nickname)
+        if not info:
+            return await interaction.followup.send("❌ 존재하지 않는 로블록스 닉네임이거나 API 오류입니다.", ephemeral=True)
+
+        try:
+            past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
+            
+            embed = discord.Embed(
+                title="🚨 데스볼 블랙리스트 등록",
+                color=0xED4245
+            )
+            embed.add_field(name="👤 신고자", value=f"{interaction.user.mention} (`{interaction.user}`)", inline=False)
+            embed.add_field(name="🎮 로블록스 닉네임", value=f"`{info['name']}`", inline=False)
+            embed.add_field(name="📛 표시 이름", value=f"`{info['display_name']}`", inline=False)
+            embed.add_field(name="🆔 로블록스 숫자 ID", value=f"`{info['user_id']}`", inline=False)
+            embed.add_field(name="📅 계정 생성일", value=f"`{info['created_at']}`", inline=False)
+            embed.add_field(name="📜 과거 사용 아이디", value=past_str, inline=False)
+
+            if info["thumb_url"]:
+                embed.set_thumbnail(url=info["thumb_url"])
+
+            target_channel = discord.utils.find(lambda c: "black-list" in c.name, interaction.guild.text_channels)
+            if not target_channel:
+                target_channel = interaction.channel
+
+            await target_channel.send(embed=embed)
+            await interaction.followup.send("✅ 성공적으로 블랙리스트에 신고(등록)되었습니다!", ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ 처리 중 문제가 발생했습니다: `{e}`", ephemeral=True)
 
 # --- 뷰 클래스 ---
 class TradeCalcView(discord.ui.View):
@@ -263,6 +296,12 @@ class VerifyView(discord.ui.View):
     @discord.ui.button(label="로블록스 계정 연동하기", style=discord.ButtonStyle.success, emoji="🔗", custom_id="verify_btn")
     async def v(self, i: discord.Interaction, b: discord.ui.Button): await i.response.send_modal(RobloxVerifyModal())
 
+class ReportView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="유저 신고하기", style=discord.ButtonStyle.danger, emoji="🚨", custom_id="report_btn")
+    async def report_btn_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ReportModal())
+
 # --- 명령어 정의 ---
 @bot.command(name="인증")
 async def cmd_verify(ctx):
@@ -270,6 +309,18 @@ async def cmd_verify(ctx):
     except: pass
     embed = discord.Embed(title="🛡️ 로블록스 디스코드 연동 인증", description="아래 버튼을 눌러 본인의 닉네임을 입력하고 인증하세요!", color=0x57F287)
     await ctx.send(embed=embed, view=VerifyView())
+
+@bot.command(name="신고패널")
+@commands.has_permissions(manage_messages=True)
+async def cmd_report_panel(ctx):
+    try: await ctx.message.delete()
+    except: pass
+    embed = discord.Embed(
+        title="🚨 데스볼 블랙리스트 신고 패널",
+        description="아래 버튼을 눌러 신고할 유저의 로블록스 닉네임을 입력하세요.\n제출된 정보는 `#black-list` 채널에 자동으로 등록됩니다.",
+        color=0xED4245
+    )
+    await ctx.send(embed=embed, view=ReportView())
 
 @bot.command(name="로벅스")
 async def cmd_robux(ctx):
