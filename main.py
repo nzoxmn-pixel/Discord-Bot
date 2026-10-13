@@ -189,7 +189,7 @@ class BankActionModal(discord.ui.Modal):
                 await interaction.response.send_message(f"📤 **{amount:,} R$**가 출금되었습니다.\n🔹 현재 잔액: `{user_bank[uid]:,} R$`", ephemeral=True)
 
 class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연동"):
-    roblox_name = discord.ui.TextInput(label="로블록스 닉네임", placeholder="정확한 닉네임 입력", required=True)
+    roblox_name = discord.ui.TextInput(label="로블록스 아이디", placeholder="정확한 아이디 입력", required=True)
     async def on_submit(self, interaction: discord.Interaction):
         nickname = self.roblox_name.value.strip()
         role = discord.utils.get(interaction.guild.roles, name="Verified")
@@ -200,7 +200,7 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
         
         info = await get_roblox_user_info(nickname)
         if not info:
-            return await interaction.followup.send("❌ 존재하지 않는 로블록스 닉네임이거나 API 오류입니다.", ephemeral=True)
+            return await interaction.followup.send("❌ 존재하지 않는 로블록스 아이디이거나 API 오류입니다.", ephemeral=True)
 
         try:
             await interaction.user.add_roles(role)
@@ -214,7 +214,7 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
                 color=0x57F287
             )
             embed.add_field(name="👤 디스코드 유저", value=f"{interaction.user.mention} (`{interaction.user}`)", inline=False)
-            embed.add_field(name="🎮 로블록스 닉네임", value=f"`{info['name']}`", inline=False)
+            embed.add_field(name="🎮 로블록스 아이디", value=f"`{info['name']}`", inline=False)
             embed.add_field(name="📛 표시 이름", value=f"`{info['display_name']}`", inline=False)
             embed.add_field(name="🆔 로블록스 숫자 ID", value=f"`{info['user_id']}`", inline=False)
             embed.add_field(name="📅 계정 생성일", value=f"`{info['created_at']}`", inline=False)
@@ -233,14 +233,14 @@ class RobloxVerifyModal(discord.ui.Modal, title="🛡️ 로블록스 계정 연
             await interaction.followup.send(f"❌ 권한 오류 또는 처리 중 문제가 발생했습니다: `{e}`", ephemeral=True)
 
 class ReportModal(discord.ui.Modal, title="🚨 유저 블랙리스트 신고"):
-    roblox_name = discord.ui.TextInput(label="신고할 로블록스 닉네임", placeholder="정확한 닉네임 입력", required=True)
+    roblox_name = discord.ui.TextInput(label="신고할 로블록스 아이디", placeholder="정확한 아이디 입력", required=True)
     async def on_submit(self, interaction: discord.Interaction):
         nickname = self.roblox_name.value.strip()
         await interaction.response.defer(thinking=True, ephemeral=True)
         
         info = await get_roblox_user_info(nickname)
         if not info:
-            return await interaction.followup.send("❌ 존재하지 않는 로블록스 닉네임이거나 API 오류입니다.", ephemeral=True)
+            return await interaction.followup.send("❌ 존재하지 않는 로블록스 아이디이거나 API 오류입니다.", ephemeral=True)
 
         try:
             past_str = ", ".join([f"`{name}`" for name in info["past_names"]]) if info["past_names"] else "없음"
@@ -250,7 +250,7 @@ class ReportModal(discord.ui.Modal, title="🚨 유저 블랙리스트 신고"):
                 color=0xED4245
             )
             embed.add_field(name="👤 신고자", value=f"{interaction.user.mention} (`{interaction.user}`)", inline=False)
-            embed.add_field(name="🎮 로블록스 닉네임", value=f"`{info['name']}`", inline=False)
+            embed.add_field(name="🎮 로블록스 아이디", value=f"`{info['name']}`", inline=False)
             embed.add_field(name="📛 표시 이름", value=f"`{info['display_name']}`", inline=False)
             embed.add_field(name="🆔 로블록스 숫자 ID", value=f"`{info['user_id']}`", inline=False)
             embed.add_field(name="📅 계정 생성일", value=f"`{info['created_at']}`", inline=False)
@@ -307,7 +307,7 @@ class ReportView(discord.ui.View):
 async def cmd_verify(ctx):
     try: await ctx.message.delete()
     except: pass
-    embed = discord.Embed(title="🛡️ 로블록스 디스코드 연동 인증", description="아래 버튼을 눌러 본인의 닉네임을 입력하고 인증하세요!", color=0x57F287)
+    embed = discord.Embed(title="🛡️ 로블록스 디스코드 연동 인증", description="아래 버튼을 눌러 본인의 아이디를 입력하고 인증하세요!", color=0x57F287)
     await ctx.send(embed=embed, view=VerifyView())
 
 @bot.command(name="신고패널")
@@ -317,7 +317,7 @@ async def cmd_report_panel(ctx):
     except: pass
     embed = discord.Embed(
         title="🚨 데스볼 블랙리스트 신고 패널",
-        description="아래 버튼을 눌러 신고할 유저의 로블록스 닉네임을 입력하세요.\n제출된 정보는 `#black-list` 채널에 자동으로 등록됩니다.",
+        description="아래 버튼을 눌러 신고할 유저의 로블록스 아이디를 입력하세요.\n제출된 정보는 `#black-list` 채널에 자동으로 등록됩니다.",
         color=0xED4245
     )
     await ctx.send(embed=embed, view=ReportView())
