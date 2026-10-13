@@ -104,7 +104,7 @@ async def get_roblox_user_info(username: str):
         async with session.get(f"https://users.roblox.com/v1/users/{user_id}/username-history") as resp:
             if resp.status == 200:
                 history_data = await resp.json()
-                past_names = [item.get("name"] for item in history_data.get("data", [])]
+                past_names = [item.get("name") for item in history_data.get("data", [])]
 
         thumb_url = None
         thumb_api = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
