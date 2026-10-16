@@ -72,6 +72,36 @@ async def fetch_item_embed(item_id: int):
         embed.set_thumbnail(url=thumbnail_url)
     return embed
 
+async def get_roblox_avatar(user_id: int):
+    async with aiohttp.ClientSession() as session:
+        # 1. 헤드샷 썸네일 시도
+        headshot_api = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
+        try:
+            async with session.get(headshot_api) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("data"):
+                        item = data["data"][0]
+                        if item.get("imageUrl"):
+                            return item["imageUrl"]
+        except Exception:
+            pass
+
+        # 2. 실패 시 전신 썸네일로 대체 시도
+        body_api = f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Png&isCircular=false"
+        try:
+            async with session.get(body_api) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("data"):
+                        item = data["data"][0]
+                        if item.get("imageUrl"):
+                            return item["imageUrl"]
+        except Exception:
+            pass
+            
+    return None
+
 async def get_roblox_user_info(username: str):
     async with aiohttp.ClientSession() as session:
         payload = {
@@ -106,13 +136,7 @@ async def get_roblox_user_info(username: str):
                 history_data = await resp.json()
                 past_names = [item.get("name") for item in history_data.get("data", [])]
 
-        thumb_url = None
-        thumb_api = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
-        async with session.get(thumb_api) as resp:
-            if resp.status == 200:
-                thumb_data = await resp.json()
-                if thumb_data.get("data"):
-                    thumb_url = thumb_data["data"][0].get("imageUrl")
+        thumb_url = await get_roblox_avatar(user_id)
 
         return {
             "user_id": user_id,
