@@ -11,6 +11,9 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 user_bank = {}
 
+# 티어 데이터를 저장할 딕셔너리 {순위(int): {"name": str, "display_name": str, "user_id": int}}
+korean_tiers = {}
+
 @bot.event
 async def on_ready():
     bot.add_view(TradeCalcView())
@@ -144,6 +147,27 @@ async def get_roblox_user_info(username: str):
             "past_names": past_names,
             "thumb_url": thumb_url
         }
+
+def build_tier_embed():
+    """티어표를 깔끔한 단일 표 형태로 생성하는 함수"""
+    embed = discord.Embed(
+        title="🏆 대한민국 데스볼 최고 플레이어 티어표 🏆",
+        description="```\n───────────────────────────────────────────\n 순위 │ 아이디 (표시 이름)\n───────────────────────────────────────────\n",
+        color=0xFEE75C
+    )
+    
+    if not korean_tiers:
+        embed.description += " 아직 등록된 티어 플레이어가 없습니다.\n"
+    else:
+        sorted_ranks = sorted(korean_tiers.keys())
+        for rank in sorted_ranks:
+            user = korean_tiers[rank]
+            medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"#{rank:02d}")
+            embed.description += f" {medal}  │ @{user['name']} ({user['display_name']})\n"
+
+    embed.description += "───────────────────────────────────────────\n```"
+    embed.set_footer(text="관리자 명령어: !티어등록 [순위] [아이디] | !티어삭제 [순위] | !티어초기화")
+    return embed
 
 # --- 모달 인터페이스 ---
 class ItemModal(discord.ui.Modal, title="🔍 한정판 아이템 시세 조회"):
@@ -358,7 +382,7 @@ async def cmd_report_panel(ctx):
 async def cmd_tier_add(ctx, rank: int, roblox_name: str):
     """
     사용법: !티어등록 [순위숫자] [로블록스아이디]
-    예시: !티어등록 1 tewkess
+    예시: !티어등록 2 orxmel (2위 자리에 넣으면 기존 2위부터 한 칸씩 뒤로 밀림)
     """
     try: await ctx.message.delete()
     except: pass
@@ -368,34 +392,70 @@ async def cmd_tier_add(ctx, rank: int, roblox_name: str):
         msg = await ctx.send("❌ 존재하지 않는 로블록스 아이디이거나 API 오류입니다.")
         return await msg.delete(delay=3)
 
+    # 순위 밀기 로직: 삽입하려는 순위 이상의 데이터들을 뒤에서부터 한 칸씩 이관
+    existing_ranks = sorted(korean_tiers.keys(), reverse=True)
+    for r in existing_ranks:
+        if r >= rank:
+            korean_tiers[r + 1] = korean_tiers[r]
+
+    # 새 순위에 유저 등록
+    korean_tiers[rank] = {
+        "name": info["name"],
+        "display_name": info["display_name"],
+        "user_id": info["user_id"]
+    }
+
     target_channel = discord.utils.find(lambda c: "korean-tier" in c.name, ctx.guild.text_channels)
     if not target_channel:
         target_channel = ctx.channel
 
-    medal_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"`#{rank}`")
-
-    embed = discord.Embed(
-        title=f"{medal_emoji} 한국인 플레이어 티어 순위 (Rank {rank})",
-        color=0xFEE75C
-    )
-    embed.add_field(name="🏆 순위", value=f"**{rank}위**", inline=True)
-    embed.add_field(name="🎮 로블록스 아이디", value=f"`{info['name']}`", inline=True)
-    embed.add_field(name="📛 표시 이름", value=f"`{info['display_name']}`", inline=True)
-    embed.add_field(name="🆔 숫자 ID", value=f"`{info['user_id']}`", inline=True)
-
-    if info["thumb_url"]:
-        embed.set_thumbnail(url=info["thumb_url"])
-
+    await target_channel.purge(limit=10)
+    embed = build_tier_embed()
     await target_channel.send(embed=embed)
 
-# 인자가 누락되었을 때 사용법 안내
-@cmd_tier_add.error
-async def cmd_tier_add_error(ctx, error):
-    if isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument):
-        try: await ctx.message.delete()
-        except: pass
-        msg = await ctx.send("⚠️ **사용법이 올바르지 않습니다.**\n👉 예시: `!티어등록 1 tewkess` (순위숫자 로블록스아이디)")
-        await msg.delete(delay=5)
+@bot.command(name="티어삭제")
+@commands.has_permissions(manage_messages=True)
+async def cmd_tier_remove(ctx, rank: int):
+    """
+    사용법: !티어삭제 [순위숫자] (삭제 후 뒤 순위들이 한 칸씩 당겨짐)
+    """
+    try: await ctx.message.delete()
+    except: pass
+
+    if rank in korean_tiers:
+        del korean_tiers[rank]
+        # 삭제 후 뒤 순위들 앞으로 당기기
+        existing_ranks = sorted(korean_tiers.keys())
+        for r in existing_ranks:
+            if r > rank:
+                korean_tiers[r - 1] = korean_tiers.pop(r)
+
+    target_channel = discord.utils.find(lambda c: "korean-tier" in c.name, ctx.guild.text_channels)
+    if not target_channel:
+        target_channel = ctx.channel
+
+    await target_channel.purge(limit=10)
+    embed = build_tier_embed()
+    await target_channel.send(embed=embed)
+
+@bot.command(name="티어초기화")
+@commands.has_permissions(manage_messages=True)
+async def cmd_tier_clear(ctx):
+    """
+    사용법: !티어초기화
+    """
+    try: await ctx.message.delete()
+    except: pass
+
+    korean_tiers.clear()
+
+    target_channel = discord.utils.find(lambda c: "korean-tier" in c.name, ctx.guild.text_channels)
+    if not target_channel:
+        target_channel = ctx.channel
+
+    await target_channel.purge(limit=10)
+    embed = build_tier_embed()
+    await target_channel.send(embed=embed)
 
 @bot.command(name="로벅스")
 async def cmd_robux(ctx):
