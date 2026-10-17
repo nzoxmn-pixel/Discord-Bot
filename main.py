@@ -11,7 +11,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 user_bank = {}
 
-# 티어 데이터를 저장할 딕셔너리 {순위(int): {"name": str, "display_name": str, "user_id": int}}
+# 티어 데이터를 저장할 딕셔너리 {순위(int): "로블록스아이디"}
 korean_tiers = {}
 
 @bot.event
@@ -149,24 +149,39 @@ async def get_roblox_user_info(username: str):
         }
 
 def build_tier_embed():
-    """티어표를 깔끔한 단일 표 형태로 생성하는 함수"""
+    """심플하면서도 세련된 디자인의 티어표 임베드"""
     embed = discord.Embed(
-        title="🏆 대한민국 데스볼 최고 플레이어 티어표 🏆",
-        description="```\n───────────────────────────────────────────\n 순위 │ 아이디 (표시 이름)\n───────────────────────────────────────────\n",
+        title="✨ 대한민국 데스볼 TOP PLAYERS ✨",
+        description="───────────────────────────\n",
         color=0xFEE75C
     )
     
     if not korean_tiers:
-        embed.description += " 아직 등록된 티어 플레이어가 없습니다.\n"
+        embed.description += "현재 등록된 티어 유저가 없습니다."
     else:
+        lines = []
         sorted_ranks = sorted(korean_tiers.keys())
+        number_emojis = {4: "4️⃣", 5: "5️⃣", 6: "6️⃣", 7: "7️⃣", 8: "8️⃣", 9: "9️⃣", 10: "🔟"}
+        
         for rank in sorted_ranks:
-            user = korean_tiers[rank]
-            medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"#{rank:02d}")
-            embed.description += f" {medal}  │ @{user['name']} ({user['display_name']})\n"
+            name = korean_tiers[rank]
+            profile_url = f"https://www.roblox.com/search/users?keyword={name}"
+            
+            if rank == 1:
+                medal = "🥇"
+            elif rank == 2:
+                medal = "🥈"
+            elif rank == 3:
+                medal = "🥉"
+            else:
+                medal = number_emojis.get(rank, "🔹")
 
-    embed.description += "───────────────────────────────────────────\n```"
-    embed.set_footer(text="관리자 명령어: !티어등록 [순위] [아이디] | !티어삭제 [순위] | !티어초기화")
+            lines.append(f"{medal} **{rank}위** ┊ `{name}` • [프로필]({profile_url})")
+            
+        embed.description += "\n\n".join(lines)
+
+    embed.description += "\n───────────────────────────"
+    embed.set_footer(text="⚡ 데스볼 서버 실시간 랭킹 시스템")
     return embed
 
 # --- 모달 인터페이스 ---
@@ -382,28 +397,18 @@ async def cmd_report_panel(ctx):
 async def cmd_tier_add(ctx, rank: int, roblox_name: str):
     """
     사용법: !티어등록 [순위숫자] [로블록스아이디]
-    예시: !티어등록 2 orxmel (2위 자리에 넣으면 기존 2위부터 한 칸씩 뒤로 밀림)
     """
     try: await ctx.message.delete()
     except: pass
 
-    info = await get_roblox_user_info(roblox_name)
-    if not info:
-        msg = await ctx.send("❌ 존재하지 않는 로블록스 아이디이거나 API 오류입니다.")
-        return await msg.delete(delay=3)
-
-    # 순위 밀기 로직: 삽입하려는 순위 이상의 데이터들을 뒤에서부터 한 칸씩 이관
+    # 기존 순위 자동 밀기 처리
     existing_ranks = sorted(korean_tiers.keys(), reverse=True)
     for r in existing_ranks:
         if r >= rank:
             korean_tiers[r + 1] = korean_tiers[r]
 
-    # 새 순위에 유저 등록
-    korean_tiers[rank] = {
-        "name": info["name"],
-        "display_name": info["display_name"],
-        "user_id": info["user_id"]
-    }
+    # 입력받은 순위에 아이디 저장
+    korean_tiers[rank] = roblox_name.strip()
 
     target_channel = discord.utils.find(lambda c: "korean-tier" in c.name, ctx.guild.text_channels)
     if not target_channel:
@@ -417,14 +422,13 @@ async def cmd_tier_add(ctx, rank: int, roblox_name: str):
 @commands.has_permissions(manage_messages=True)
 async def cmd_tier_remove(ctx, rank: int):
     """
-    사용법: !티어삭제 [순위숫자] (삭제 후 뒤 순위들이 한 칸씩 당겨짐)
+    사용법: !티어삭제 [순위숫자]
     """
     try: await ctx.message.delete()
     except: pass
 
     if rank in korean_tiers:
         del korean_tiers[rank]
-        # 삭제 후 뒤 순위들 앞으로 당기기
         existing_ranks = sorted(korean_tiers.keys())
         for r in existing_ranks:
             if r > rank:
