@@ -149,15 +149,14 @@ async def get_roblox_user_info(username: str):
         }
 
 def build_tier_embed():
-    """심플하면서도 세련된 디자인의 티어표 임베드"""
+    """군더더기 없는 군더더기 없는 심플 티어표 임베드"""
     embed = discord.Embed(
         title="✨ 대한민국 데스볼 TOP PLAYERS ✨",
-        description="───────────────────────────\n",
         color=0xFEE75C
     )
     
     if not korean_tiers:
-        embed.description += "현재 등록된 티어 유저가 없습니다."
+        embed.description = "현재 등록된 티어 유저가 없습니다."
     else:
         lines = []
         sorted_ranks = sorted(korean_tiers.keys())
@@ -165,7 +164,6 @@ def build_tier_embed():
         
         for rank in sorted_ranks:
             name = korean_tiers[rank]
-            profile_url = f"https://www.roblox.com/search/users?keyword={name}"
             
             if rank == 1:
                 medal = "🥇"
@@ -176,12 +174,10 @@ def build_tier_embed():
             else:
                 medal = number_emojis.get(rank, "🔹")
 
-            lines.append(f"{medal} **{rank}위** ┊ `{name}` • [프로필]({profile_url})")
+            lines.append(f"{medal} **{rank}위.** `{name}`")
             
-        embed.description += "\n\n".join(lines)
+        embed.description = "\n".join(lines)
 
-    embed.description += "\n───────────────────────────"
-    embed.set_footer(text="⚡ 데스볼 서버 실시간 랭킹 시스템")
     return embed
 
 # --- 모달 인터페이스 ---
@@ -394,12 +390,16 @@ async def cmd_report_panel(ctx):
 
 @bot.command(name="티어등록")
 @commands.has_permissions(manage_messages=True)
-async def cmd_tier_add(ctx, rank: int, roblox_name: str):
+async def cmd_tier_add(ctx, rank: int = None, roblox_name: str = None):
     """
     사용법: !티어등록 [순위숫자] [로블록스아이디]
     """
     try: await ctx.message.delete()
     except: pass
+
+    if rank is None or roblox_name is None:
+        msg = await ctx.send("❌ 사용법: `!티어등록 [순위] [로블록스아이디]` (예: `!티어등록 1 orxmel`)")
+        return await msg.delete(delay=4)
 
     # 기존 순위 자동 밀기 처리
     existing_ranks = sorted(korean_tiers.keys(), reverse=True)
@@ -418,14 +418,25 @@ async def cmd_tier_add(ctx, rank: int, roblox_name: str):
     embed = build_tier_embed()
     await target_channel.send(embed=embed)
 
+@cmd_tier_add.error
+async def cmd_tier_add_error(ctx, error):
+    try: await ctx.message.delete()
+    except: pass
+    msg = await ctx.send("❌ 사용법이 잘못되었습니다: `!티어등록 [순위숫자] [로블록스아이디]`")
+    await msg.delete(delay=4)
+
 @bot.command(name="티어삭제")
 @commands.has_permissions(manage_messages=True)
-async def cmd_tier_remove(ctx, rank: int):
+async def cmd_tier_remove(ctx, rank: int = None):
     """
     사용법: !티어삭제 [순위숫자]
     """
     try: await ctx.message.delete()
     except: pass
+
+    if rank is None:
+        msg = await ctx.send("❌ 사용법: `!티어삭제 [순위숫자]` (예: `!티어삭제 1`)")
+        return await msg.delete(delay=4)
 
     if rank in korean_tiers:
         del korean_tiers[rank]
@@ -441,6 +452,13 @@ async def cmd_tier_remove(ctx, rank: int):
     await target_channel.purge(limit=10)
     embed = build_tier_embed()
     await target_channel.send(embed=embed)
+
+@cmd_tier_remove.error
+async def cmd_tier_remove_error(ctx, error):
+    try: await ctx.message.delete()
+    except: pass
+    msg = await ctx.send("❌ 사용법이 잘못되었습니다: `!티어삭제 [순위숫자]`")
+    await msg.delete(delay=4)
 
 @bot.command(name="티어초기화")
 @commands.has_permissions(manage_messages=True)
