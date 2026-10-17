@@ -74,7 +74,6 @@ async def fetch_item_embed(item_id: int):
 
 async def get_roblox_avatar(user_id: int):
     async with aiohttp.ClientSession() as session:
-        # 1. 헤드샷 썸네일 시도
         headshot_api = f"https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={user_id}&size=420x420&format=Png&isCircular=false"
         try:
             async with session.get(headshot_api) as resp:
@@ -87,7 +86,6 @@ async def get_roblox_avatar(user_id: int):
         except Exception:
             pass
 
-        # 2. 실패 시 전신 썸네일로 대체 시도
         body_api = f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=420x420&format=Png&isCircular=false"
         try:
             async with session.get(body_api) as resp:
@@ -354,6 +352,41 @@ async def cmd_report_panel(ctx):
         color=0xED4245
     )
     await ctx.send(embed=embed, view=ReportView())
+
+@bot.command(name="티어등록")
+@commands.has_permissions(manage_messages=True)
+async def cmd_tier_add(ctx, rank: int, roblox_name: str):
+    """
+    사용법: !티어등록 [순위숫자] [로블록스아이디]
+    예시: !티어등록 1 tewkess
+    """
+    try: await ctx.message.delete()
+    except: pass
+
+    info = await get_roblox_user_info(roblox_name)
+    if not info:
+        msg = await ctx.send("❌ 존재하지 않는 로블록스 아이디이거나 API 오류입니다.")
+        return await msg.delete(delay=3)
+
+    target_channel = discord.utils.find(lambda c: "korean-tier" in c.name, ctx.guild.text_channels)
+    if not target_channel:
+        target_channel = ctx.channel
+
+    medal_emoji = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, f"`#{rank}`")
+
+    embed = discord.Embed(
+        title=f"{medal_emoji} 한국인 플레이어 티어 순위 (Rank {rank})",
+        color=0xFEE75C
+    )
+    embed.add_field(name="🏆 순위", value=f"**{rank}위**", inline=True)
+    embed.add_field(name="🎮 로블록스 아이디", value=f"`{info['name']}`", inline=True)
+    embed.add_field(name="📛 표시 이름", value=f"`{info['display_name']}`", inline=True)
+    embed.add_field(name="🆔 숫자 ID", value=f"`{info['user_id']}`", inline=True)
+
+    if info["thumb_url"]:
+        embed.set_thumbnail(url=info["thumb_url"])
+
+    await target_channel.send(embed=embed)
 
 @bot.command(name="로벅스")
 async def cmd_robux(ctx):
