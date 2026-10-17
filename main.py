@@ -388,6 +388,15 @@ async def cmd_tier_add(ctx, rank: int, roblox_name: str):
 
     await target_channel.send(embed=embed)
 
+# 인자가 누락되었을 때 사용법 안내
+@cmd_tier_add.error
+async def cmd_tier_add_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument):
+        try: await ctx.message.delete()
+        except: pass
+        msg = await ctx.send("⚠️ **사용법이 올바르지 않습니다.**\n👉 예시: `!티어등록 1 tewkess` (순위숫자 로블록스아이디)")
+        await msg.delete(delay=5)
+
 @bot.command(name="로벅스")
 async def cmd_robux(ctx):
     try: await ctx.message.delete()
